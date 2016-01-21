@@ -50,6 +50,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         elementData[i] = {};
 
     var measuring = true;
+    var countDown = 0;
     var forceFull = false;
 
     function composeVarStr(name, partial, partialComponent) {
@@ -110,6 +111,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     }
 
     function toggleMeasuring() {
+        console.log(data);
         if (measuring || countDown != 0)
             $.getJSON("control?cmd=stop");
         else
