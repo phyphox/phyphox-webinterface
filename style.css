@@ -8,10 +8,7 @@ body, html {
     color: ###main-color###;
     font-size: 3vw;
     font-family: sans-serif;
-}
-
-body {
-    padding: 3vw;
+    overflow: hidden;
 }
 
 ul {
@@ -26,14 +23,13 @@ ul {
 
 #logo {
     display: inline-block;
-    width: 4.5vw;
+    width: 16.875vw;
     height: 4.5vw;
-    margin-right: 0.5vw;
+    margin-right: 0.3vw;
 }
 
 #buttons {
     display: inline-block;
-    margin-left: 0.5vw;
     vertical-align: top;
 }
 
@@ -49,7 +45,6 @@ ul {
     height: 3.5vw;
     text-align: center;
     cursor: pointer;
-    margin-left: 0.5vw;
     vertical-align: top;
     overflow: hidden;
 }
@@ -88,43 +83,34 @@ ul {
 
 #titleBar {
     display: inline-block;
-    width: 73.0vw;
+    width: 68.325vw;
     padding: 0.5vw;
     height: 3.5vw;
     background: ###highlight-color###;
-    color: ###main-color###;
-    margin-bottom: 1vw;
+    color: ###background-color###;
     vertical-align: top;
 }
 
 #title, #viewSelector {
-    height: 3.5vw;
-    font-size: 3vw;
+    height: 1.75vw;
+    font-size: 1.5vw;
     display: block;
     background: ###highlight-color###;
-    color: ###main-color###;
+    color: ###background-color###;
     border: none;
     align-items: baseline;
-}
-
-#title {
-    font-weight: bold;
-}
-
-#viewSelector {
-    float: right;
-}
-
-#viewSelector:hover {
-    color: ###main-color###;
-}
-
-#viewSelector option {
-    text-align: right;
+    margin: 0 2vw;
+    padding: 0;
 }
 
 #views {
-    width: 100%;
+    position: absolute;
+    top: 4.5vw;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+    padding-top: 1vw;
 }
 
 .elementBlock {
@@ -176,8 +162,8 @@ ul {
 
 .graphElement {
     display: block;
-    width: 100%;
-    margin: 0 1%;
+    width: 80%;
+    margin: 0 10%;
 }
 
 .graphElement .label {

@@ -50,7 +50,6 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         elementData[i] = {};
 
     var measuring = true;
-    var countDown = 0;
     var forceFull = false;
 
     function composeVarStr(name, partial, partialComponent) {
@@ -200,10 +199,10 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
 <body>
 <div id="header">
     <img id="logo" src="logo" /><div id="titleBar">
+        <h1 id="title"><!-- [[title]] --></h1>
         <select id="viewSelector">
             <!-- [[viewOptions]] -->
         </select>
-        <h1 id="title"><!-- [[title]] --></h1>
     </div><div id="buttons">
         <div id="measuring" onclick="toggleMeasuring()"></div><div id="export" onclick="exportData()"></div><div id="columns" onclick="switchColumns()"></div>
     </div>
