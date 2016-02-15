@@ -19,13 +19,15 @@ ul {
     padding: 0;
     margin: 0;
     white-space: nowrap;
+    background-color: ###highlight-color###;
+    color: ###main-color###;
 }
 
 #logo {
     display: inline-block;
-    width: 16.875vw;
-    height: 4.5vw;
-    margin-right: 0.3vw;
+    width: 13.067vw;
+    height: 3.5vw;
+    margin: 0.5vw;
 }
 
 #buttons {
@@ -83,11 +85,9 @@ ul {
 
 #titleBar {
     display: inline-block;
-    width: 68.325vw;
+    width: 71.533vw;
     padding: 0.5vw;
     height: 3.5vw;
-    background: ###highlight-color###;
-    color: ###background-color###;
     vertical-align: top;
 }
 
