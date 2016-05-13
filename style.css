@@ -16,47 +16,44 @@ ul {
 }
 
 #header {
-    padding: 0;
-    margin: 0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 1000;
     white-space: nowrap;
     background-color: ###highlight-color###;
-    color: ###main-color###;
+    box-shadow: 0 0.4vw 0.4vw rgba(0, 0, 0, 0.1);
 }
 
 #logo {
     display: inline-block;
-    width: 13.067vw;
     height: 3.5vw;
     margin: 0.5vw;
+    vertical-align: middle;
 }
 
 #buttons {
+    position: absolute;
+    right: 0;
+    top: 0;
     display: inline-block;
-    vertical-align: top;
+    vertical-align: middle;
 }
 
-#buttons div {
+#buttons > div {
     display: inline-block;
     background-color: ###highlight-color###;
     background-repeat: no-repeat;
     background-position: center center;
     background-size: 80%;
-    color: ###main-color###;
     padding: 0.5vw;
     min-width: 3.5vw;
     height: 3.5vw;
     text-align: center;
     cursor: pointer;
-    vertical-align: top;
+    vertical-align: middle;
     overflow: hidden;
-}
-
-#buttons div:hover {
-    color: ###main-color###;
-}
-
-#buttons div:first-child {
-    margin-left: 0;
 }
 
 #measuring {
@@ -75,32 +72,93 @@ ul {
     background-image: url(data:image/png;base64,###drawableTimedPause###);
 }
 
-#export:empty {
-    background-image: url(data:image/png;base64,###drawableExport###);
+#buttons > #countdown {
+    cursor: default;
+    min-width: 0;
 }
 
-#columns:empty {
-    background-image: url(data:image/png;base64,###drawableColumns###);
+#buttons > #countdown:empty {
+    padding: 0;
+    width: 0;
+
+}
+
+#more {
+    background-image: url(data:image/png;base64,###drawableMore###);
+}
+
+#moreMenu {
+    position: absolute;
+    display: block;
+    right: 0.2vw;
+    top: 0.2vw;
+    box-shadow: 0 0.8vw 0.8vw rgba(0, 0, 0, 0.1);
+    z-index: 2000;
+    background: ###background2-color###;
+    font-size: 1.5vw;
+}
+
+#moreMenu li {
+    padding: 1vw;
+}
+
+#moreMenu li:hover {
+    background: ###background2hover-color###;
+}
+
+.columns1 #switchColumns1, .columns2 #switchColumns2, .columns3 #switchColumns3 {
+    display: none;
 }
 
 #titleBar {
     display: inline-block;
-    width: 71.533vw;
     padding: 0.5vw;
     height: 3.5vw;
-    vertical-align: top;
+    vertical-align: middle;
 }
 
-#title, #viewSelector {
-    height: 1.75vw;
-    font-size: 1.5vw;
+#title {
+    height: 3.5vw;
+    font-size: 3.0vw;
     display: block;
     background: ###highlight-color###;
-    color: ###background-color###;
-    border: none;
-    align-items: baseline;
-    margin: 0 2vw;
     padding: 0;
+}
+
+#viewSelectorBar {
+    display: none;
+}
+
+.multiView #viewSelectorBar {
+    display: block;
+    position: absolute;
+    top: 4.5vw;
+    left: 0;
+    right: 0;
+    box-shadow: 0 0.2vw 0.2vw rgba(0, 0, 0, 0.1);
+    background: ###background2-color###;
+    height: 3.5vw;
+    z-index: 500;
+    font-size: 1.5vw;
+    line-height: 1;
+}
+
+#viewSelector li {
+    display: inline-block;
+    text-transform: uppercase;
+    padding: 1vw;
+    cursor: pointer;
+}
+
+#viewSelector li:hover {
+    background: ###background2hover-color###;
+}
+
+#viewSelector li.active {
+    display: inline-block;
+    text-transform: uppercase;
+    padding: 1vw 1vw 0.75vw 1vw;
+    border-bottom: 0.25vw solid ###highlight-color###;
 }
 
 #views {
@@ -111,6 +169,10 @@ ul {
     bottom: 0;
     overflow-y: auto;
     padding-top: 1vw;
+}
+
+.multiView #views {
+    top: 8vw;
 }
 
 .elementBlock {
@@ -199,20 +261,18 @@ ul {
 }
 
 #exportDialog {
+    z-index: 5000;
     position: absolute;
     left: 0;
     right: 0;
-    top: 10vh;
+    top: 15vh;
     text-align: center;
 }
 
 #exportDialog form {
-    box-shadow: 0 0 3vh;
-    border: 2px solid black;
+    box-shadow: 0 0.4vw 0.4vw rgba(0, 0, 0, 0.1);
     display: inline-block;
-    background: white;
-    color: black;
-    font-size: initial;
+    background: ###background2-color###;
     text-align: left;
     padding: 1%;
 }

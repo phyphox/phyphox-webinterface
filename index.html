@@ -39,7 +39,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     <!--Load the AJAX API-->
     <script>
     <!-- [[viewLayout]] -->
-    var currentView;
+    var currentView = 0;
     var usedVarStr = "";
 
     var data = {};
@@ -130,13 +130,11 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         }
         if (countDown != 0) {
             $("#header").addClass("countdown");
+            $("#countdown").text(Math.ceil(countDown/1000) + "s");
         } else {
             $("#header").removeClass("countdown");
+            $("#countdown").text("");
         }
-        if (countDown == 0)
-            $("#export").text("");
-        else
-            $("#export").text(Math.ceil(countDown/1000) + "s");
     }
 
     function updateViews() {
@@ -151,13 +149,20 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         });
     }
 
-    function switchView() {
-        currentView = $("#viewSelector").val();
+    function switchView(newView) {
+        currentView = newView;
         updateUsedVarStr();
+        $("#viewSelector li").removeClass("active");
+        $("#viewSelector li").eq(currentView).addClass("active");
         $("#views").html("");
         views[currentView]["elements"].forEach(function(ve) {
             $("#views").append("<div class=\"elementBlock\">" + ve["html"] + "</div>");
         });
+    }
+
+    function clearData() {
+        $.getJSON("control?cmd=clear");
+        forceFull = true;
     }
 
     function exportData() {
@@ -169,29 +174,38 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         $("#exportDialog").fadeOut(500);
     }
 
-    var columns = 1;
-
-    function setColumns(n) {
-        columns = n;
+    function switchColumns(columns) {
         $("body").removeClass("columns1 columns2 columns3").addClass("columns"+columns);
-    }
-
-    function switchColumns() {
-        columns++;
-        if (columns > 3)
-            columns = 1;
-        setColumns(columns);
         updateViews();
     }
 
+    function toggleMenu(e) {
+         $("#moreMenu").toggle( "fast", function() {});
+         if (!e)
+            e = window.event;
+         e.stopPropagation();
+    }
+
+    function hideMenu() {
+         $("#moreMenu").hide( "fast", function() {});
+    }
+
     $(function() {
-        switchView();
-        setColumns(1);
-		updateData();
-		$("#viewSelector").change(switchView);
+        if (nViews > 1) {
+            $("body").addClass("multiView");
+        }
+        $("body").click(hideMenu);
+        $("#moreMenu").hide();
+        $("#viewSelector li").each(function(i) {
+            $(this).click(function () {switchView(i)});
+        });
+        switchView(0);
+        switchColumns(1);
 		$("#exportDialog form").submit(function() {
 		    hideExport();
 		});
+
+		updateData();
 
 	});
     </script>
@@ -199,14 +213,27 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
 
 <body>
 <div id="header">
-    <img id="logo" src="logo" /><div id="titleBar">
+    <img id="logo" src="logo" />
+    <div id="titleBar">
         <h1 id="title"><!-- [[title]] --></h1>
-        <select id="viewSelector">
-            <!-- [[viewOptions]] -->
-        </select>
-    </div><div id="buttons">
-        <div id="measuring" onclick="toggleMeasuring()"></div><div id="export" onclick="exportData()"></div><div id="columns" onclick="switchColumns()"></div>
     </div>
+    <div id="buttons">
+        <div id="measuring" onclick="toggleMeasuring()"></div><div id="countdown"></div><div id="more" onclick="toggleMenu(event)">
+            <ul id="moreMenu">
+                <li id="clear" onclick="clearData()"><!-- [[clearDataTranslation]] --></li>
+                <li id="export" onclick="exportData()"><!-- [[exportTranslation]] --></li>
+                <li id="switchColumns1" onclick="switchColumns(1)"><!-- [[switchColumns1Translation]] --></li>
+                <li id="switchColumns2" onclick="switchColumns(2)"><!-- [[switchColumns2Translation]] --></li>
+                <li id="switchColumns3" onclick="switchColumns(3)"><!-- [[switchColumns3Translation]] --></li>
+            </ul>
+        </div>
+    </div>
+
+</div>
+<div id="viewSelectorBar">
+    <ul id="viewSelector">
+        <!-- [[viewOptions]] -->
+    </ul>
 </div>
 <div id="views"></div>
 <div id="exportDialog" style="display:none;">
