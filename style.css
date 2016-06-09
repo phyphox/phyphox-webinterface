@@ -107,6 +107,10 @@ ul {
     background: ###background2hover-color###;
 }
 
+#moreMenu #clear {
+    color: #ff4040;
+}
+
 .columns1 #switchColumns1, .columns2 #switchColumns2, .columns3 #switchColumns3 {
     display: none;
 }
