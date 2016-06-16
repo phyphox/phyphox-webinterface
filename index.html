@@ -73,10 +73,6 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         var usedVars = [];
         var varStr = [];
         views[currentView]["elements"].forEach(function(ve) {
-            if (ve.hasOwnProperty("valueInput") && (usedVars.indexOf(ve["valueInput"]) < 0)) {
-                varStr.push(composeVarStr(ve["valueInput"], "single"));
-                usedVars.push(ve["valueInput"]);
-            }
             if (ve.hasOwnProperty("dataXInput") && (usedVars.indexOf(ve["dataXInput"]) < 0)) {
                 varStr.push(composeVarStr(ve["dataXInput"], ve["partialUpdate"], ve["dataXInput"]));
                 usedVars.push(ve["dataXInput"]);
@@ -84,6 +80,12 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
             if (ve.hasOwnProperty("dataYInput") && (usedVars.indexOf(ve["dataYInput"]) < 0)) {
                 varStr.push(composeVarStr(ve["dataYInput"], ve["partialUpdate"], ve["dataXInput"]));
                 usedVars.push(ve["dataYInput"]);
+            }
+        });
+        views[currentView]["elements"].forEach(function(ve) {
+            if (ve.hasOwnProperty("valueInput") && (usedVars.indexOf(ve["valueInput"]) < 0)) {
+                varStr.push(composeVarStr(ve["valueInput"], "single"));
+                usedVars.push(ve["valueInput"]);
             }
         });
         usedVarStr = varStr.join("&");
