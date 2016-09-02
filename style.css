@@ -265,6 +265,18 @@ ul {
     font-size: smaller;
 }
 
+#error {
+    z-index: 10000;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #800000;
+    border-top: 1px solid #ff0000;
+    display: none;
+    text-align: center;
+}
+
 #exportDialog {
     z-index: 5000;
     position: absolute;

@@ -40,6 +40,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     <!--Load the AJAX API-->
     <script>
     <!-- [[viewLayout]] -->
+    var sessionID = "";
     var currentView = 0;
     var usedVarStr = "";
 
@@ -106,6 +107,11 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
             }
             updateViews();
             updateMeasuring(jsonData["status"]);
+            $("#error").hide();
+        }).fail(function() {
+            $("#error").text("Update failed! Please check your connection.");
+            $("#error").show();
+            forceFull = true;
         }).always(function() {
             if (measuring)
                 setTimeout(updateData, 30);
@@ -124,6 +130,10 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     function updateMeasuring(s) {
         if (measuring != s["measuring"])
             forceFull = true;
+        if (sessionID == "")
+            sessionID = s["session"];
+        else if (sessionID != s["session"])
+            askSessionReload();
         measuring = s["measuring"];
         timedRun = s["timedRun"];
         countDown = s["countDown"];
@@ -139,6 +149,13 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
             $("#header").removeClass("countdown");
             $("#countdown").text("");
         }
+    }
+
+    function askSessionReload() {
+        if (window.confirm("The phyphox session has changed. Do you want to reload this window?")) {
+            window.location.reload(true);
+        } else
+            sessionID = "";
     }
 
     function updateViews() {
@@ -240,6 +257,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     </ul>
 </div>
 <div id="views"></div>
+<div id="error">No error.</div>
 <div id="exportDialog" style="display:none;">
     <form method="get" action="export" target="_blank">
         <select name="format">
