@@ -179,6 +179,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         views[currentView]["elements"].forEach(function(ve) {
             $("#views").append("<div class=\"elementBlock\">" + ve["html"] + "</div>");
         });
+        forceFull = true;
     }
 
     function clearData() {
