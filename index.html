@@ -63,8 +63,10 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
             if ((!forceFull) && data.hasOwnProperty(partialComponent) && data[partialComponent].length > 0) {
                 if (partialComponent == name)
                     return namePart + "=" + data[partialComponent][data[partialComponent].length-1];
-                else
-                    return namePart + "=" + data[partialComponent][data[partialComponent].length-1] + "|" + encodeURIComponent(partialComponent);
+                else {
+                    var minLength = Math.min(data[partialComponent].length, data[data].length);
+                    return namePart + "=" + data[partialComponent][minLength-1] + "|" + encodeURIComponent(partialComponent);
+                }
             } else
                 return namePart + "=full";
         }
