@@ -64,7 +64,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
                 if (partialComponent == name)
                     return namePart + "=" + data[partialComponent][data[partialComponent].length-1];
                 else {
-                    var minLength = Math.min(data[partialComponent].length, data[data].length);
+                    var minLength = Math.min(data[partialComponent].length, data[name].length);
                     return namePart + "=" + data[partialComponent][minLength-1] + "|" + encodeURIComponent(partialComponent);
                 }
             } else
