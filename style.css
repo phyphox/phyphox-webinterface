@@ -257,6 +257,28 @@ ul {
     bottom: 0;
 }
 
+.infoElement {
+    margin: 1% 2%;
+}
+
+.buttonElement {
+    text-align: center;
+}
+
+.buttonElement button {
+    font-size: 100%;
+    background: ###background2-color###;
+    color: ###main-color###;
+    padding: 0 0.5%;
+    margin: 0.5% auto;
+}
+
+.buttonElement button:hover {
+    font-size: 100%;
+    background: ###background2hover-color###;
+    color: ###main-color###;
+}
+
 .tickLabel, .axisLabels {
     color: ###main-color###;
 }
