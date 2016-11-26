@@ -173,6 +173,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     }
 
     function switchView(newView) {
+        forceFull = true;
         currentView = newView;
         updateUsedVarStr();
         $("#viewSelector li").removeClass("active");
