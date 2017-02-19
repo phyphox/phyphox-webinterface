@@ -200,7 +200,12 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     }
 
     function switchColumns(columns) {
-        $("body").removeClass("columns1 columns2 columns3").addClass("columns"+columns);
+        $("body").removeClass("columns1 columns2 columns3 phone").addClass("columns"+columns);
+        updateViews();
+    }
+
+    function switchToPhoneLayout() {
+        $("body").removeClass("columns1 columns2 columns3").addClass("phone");
         updateViews();
     }
 
@@ -225,7 +230,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
             $(this).click(function () {switchView(i)});
         });
         switchView(0);
-        switchColumns(1);
+        switchToPhoneLayout();
 		$("#exportDialog form").submit(function() {
 		    hideExport();
 		});
@@ -246,6 +251,7 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         <div id="measuring" onclick="toggleMeasuring()"></div><div id="countdown"></div><div id="more" onclick="toggleMenu(event)">
             <ul id="moreMenu">
                 <li id="export" onclick="exportData()"><!-- [[exportTranslation]] --></li>
+                <li id="switchToPhoneLayout" onclick="switchToPhoneLayout()"><!-- [[switchToPhoneLayoutTranslation]] --></li>
                 <li id="switchColumns1" onclick="switchColumns(1)"><!-- [[switchColumns1Translation]] --></li>
                 <li id="switchColumns2" onclick="switchColumns(2)"><!-- [[switchColumns2Translation]] --></li>
                 <li id="switchColumns3" onclick="switchColumns(3)"><!-- [[switchColumns3Translation]] --></li>

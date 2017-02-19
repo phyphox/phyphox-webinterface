@@ -111,7 +111,7 @@ ul {
     color: #ff4040;
 }
 
-.columns1 #switchColumns1, .columns2 #switchColumns2, .columns3 #switchColumns3 {
+.columns1 #switchColumns1, .columns2 #switchColumns2, .columns3 #switchColumns3, .phone #switchToPhoneLayout {
     display: none;
 }
 
@@ -197,6 +197,13 @@ ul {
     font-size: 33%;
 }
 
+.phone .elementBlock {
+    margin: auto;
+    display: block;
+    width: 57vh;
+    font-size: 2.5vh;
+}
+
 .valueElement, .editElement {
     display: block;
     width: 100%;
@@ -233,10 +240,17 @@ ul {
     margin: 0 10%;
 }
 
+.phone .graphElement {
+    width: 100%;
+    margin: 0;
+}
+
 .graphElement .label {
     display: block;
+    width: 99%;
     font-weight: bold;
     padding: 0.5%;
+    text-align: left;
 }
 
 .graphElement .graphBox {
@@ -259,6 +273,7 @@ ul {
 
 .infoElement {
     margin: 1% 2%;
+    font-size: smaller;
 }
 
 .buttonElement {
