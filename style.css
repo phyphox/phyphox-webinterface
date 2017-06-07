@@ -73,6 +73,10 @@ ul {
     background-image: url(data:image/png;base64,###drawableTimedPause###);
 }
 
+#clear {
+    background-image: url(data:image/png;base64,###drawableClearData###);
+}
+
 #buttons > #countdown {
     cursor: default;
     min-width: 0;

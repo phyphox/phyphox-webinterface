@@ -186,8 +186,10 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
     }
 
     function clearData() {
-        $.getJSON("control?cmd=clear");
-        forceFull = true;
+        if (confirm("<!-- [[clearConfirmTranslation]] -->")) {
+            $.getJSON("control?cmd=clear");
+            forceFull = true;
+        }
     }
 
     function exportData() {
@@ -248,14 +250,13 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         <h1 id="title"><!-- [[title]] --></h1>
     </div>
     <div id="buttons">
-        <div id="measuring" onclick="toggleMeasuring()"></div><div id="countdown"></div><div id="more" onclick="toggleMenu(event)">
+        <div id="countdown"></div><div id="measuring" onclick="toggleMeasuring()"></div><div id="clear" onclick="clearData()"></div><div id="more" onclick="toggleMenu(event)">
             <ul id="moreMenu">
                 <li id="export" onclick="exportData()"><!-- [[exportTranslation]] --></li>
                 <li id="switchToPhoneLayout" onclick="switchToPhoneLayout()"><!-- [[switchToPhoneLayoutTranslation]] --></li>
                 <li id="switchColumns1" onclick="switchColumns(1)"><!-- [[switchColumns1Translation]] --></li>
                 <li id="switchColumns2" onclick="switchColumns(2)"><!-- [[switchColumns2Translation]] --></li>
                 <li id="switchColumns3" onclick="switchColumns(3)"><!-- [[switchColumns3Translation]] --></li>
-                <li id="clear" onclick="clearData()"><!-- [[clearDataTranslation]] --></li>
             </ul>
         </div>
     </div>
