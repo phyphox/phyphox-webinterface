@@ -77,21 +77,22 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
         var usedVars = [];
         var varStr = [];
         views[currentView]["elements"].forEach(function(ve) {
-            if (ve.hasOwnProperty("dataXInput") && (usedVars.indexOf(ve["dataXInput"]) < 0)) {
-                varStr.push(composeVarStr(ve["dataXInput"], ve["partialUpdate"], ve["dataXInput"]));
-                usedVars.push(ve["dataXInput"]);
-            }
-            if (ve.hasOwnProperty("dataYInput") && (usedVars.indexOf(ve["dataYInput"]) < 0)) {
-                varStr.push(composeVarStr(ve["dataYInput"], ve["partialUpdate"], ve["dataXInput"]));
-                usedVars.push(ve["dataYInput"]);
+            if (ve.hasOwnProperty("dataInput")) {
+                for (var index = 0; index < ve["dataInput"].length; index++) {
+                    if (usedVars.indexOf(ve["dataInput"][index]) < 0) {
+                        if (ve["updateMode"] == "single") {
+                            varStr.push(composeVarStr(ve["dataInput"][index], "single"));
+                            usedVars.push(ve["dataInput"][index]);
+                        } else if (ve["updateMode"] == "partial" || ve["updateMode"] == "full") {
+                            var dependentVar = ((ve["dataInput"].length > index + 1) && (index % 2 == 0)) ? ve["dataInput"][index+1] : ve["dataInput"][index];
+                            varStr.push(composeVarStr(ve["dataInput"][index], ve["updateMode"], dependentVar));
+                            usedVars.push(ve["dataInput"][index]);
+                        }
+                    }
+                }
             }
         });
-        views[currentView]["elements"].forEach(function(ve) {
-            if (ve.hasOwnProperty("valueInput") && (usedVars.indexOf(ve["valueInput"]) < 0)) {
-                varStr.push(composeVarStr(ve["valueInput"], "single"));
-                usedVars.push(ve["valueInput"]);
-            }
-        });
+
         usedVarStr = varStr.join("&");
         forceFull = false;
     }
@@ -162,12 +163,8 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
 
     function updateViews() {
         views[currentView]["elements"].forEach(function(ve) {
-            if (ve.hasOwnProperty("valueInput") && data.hasOwnProperty(ve["valueInput"]))
-                ve["valueInputFunction"](data[ve["valueInput"]][data[ve["valueInput"]].length - 1]);
-            if (ve.hasOwnProperty("dataXInput") && data.hasOwnProperty(ve["dataXInput"]))
-                ve["dataXInputFunction"](data[ve["dataXInput"]]);
-            if (ve.hasOwnProperty("dataYInput") && data.hasOwnProperty(ve["dataYInput"]))
-                ve["dataYInputFunction"](data[ve["dataYInput"]]);
+            if (ve.hasOwnProperty("dataInputFunction"))
+                ve["dataInputFunction"](data);
             ve["dataCompleteFunction"]();
         });
     }
