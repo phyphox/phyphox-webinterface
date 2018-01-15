@@ -99,18 +99,20 @@ if(yrange.from==null)yrange.from=yrange.axis.min;if(yrange.to==null)yrange.to=yr
 
     function updateData() {
         updateUsedVarStr();
-        $.getJSON("get?" + usedVarStr, function( jsonData ) {
-            for (var index in jsonData["buffer"]) {
-                if (jsonData["buffer"][index]["updateMode"] == "partial" && data.hasOwnProperty(index) && data[index].length > 0) {
-                    data[index] = data[index].concat(jsonData["buffer"][index]["buffer"]);
-                    if (jsonData["buffer"][index]["size"] > 0)
-                        data[index].splice(0, data[index].length - jsonData["buffer"][index]["size"]);
-                } else
-                    data[index] = jsonData["buffer"][index]["buffer"];
+        $.ajax({dataType: "json", url: "get?" + usedVarStr, timeout: 10000,
+            success: function( jsonData ) {
+                for (var index in jsonData["buffer"]) {
+                    if (jsonData["buffer"][index]["updateMode"] == "partial" && data.hasOwnProperty(index) && data[index].length > 0) {
+                        data[index] = data[index].concat(jsonData["buffer"][index]["buffer"]);
+                        if (jsonData["buffer"][index]["size"] > 0)
+                            data[index].splice(0, data[index].length - jsonData["buffer"][index]["size"]);
+                    } else
+                        data[index] = jsonData["buffer"][index]["buffer"];
+                }
+                updateViews();
+                updateMeasuring(jsonData["status"]);
+                $("#error").hide();
             }
-            updateViews();
-            updateMeasuring(jsonData["status"]);
-            $("#error").hide();
         }).fail(function() {
             $("#error").text("Update failed! Please check your connection.");
             $("#error").show();
