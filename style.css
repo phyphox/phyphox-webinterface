@@ -6,7 +6,7 @@
 body, html {
     background: ###background-color###;
     color: ###main-color###;
-    font-size: 3vw;
+    font-size: 100%;
     font-family: sans-serif;
     overflow: hidden;
 }
@@ -17,20 +17,20 @@ ul {
 
 #header {
     position: absolute;
-    height: 4.5vw;
+    height: 3.5em;
     left: 0;
     right: 0;
     top: 0;
     z-index: 1000;
     white-space: nowrap;
     background-color: ###highlight-color###;
-    box-shadow: 0 0.4vw 0.4vw rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0.4em 0.4em rgba(0, 0, 0, 0.2);
 }
 
 #logo {
     display: inline-block;
-    height: 3.5vw;
-    margin: 0.5vw;
+    height: 2.5em;
+    margin: 0.5em;
     vertical-align: middle;
 }
 
@@ -42,19 +42,29 @@ ul {
     vertical-align: middle;
 }
 
-#buttons > div {
+#buttons > div, #moreButtons > div {
     display: inline-block;
-    background-color: ###highlight-color###;
     background-repeat: no-repeat;
     background-position: center center;
     background-size: 80%;
-    padding: 0.5vw;
-    min-width: 3.5vw;
-    height: 3.5vw;
     text-align: center;
     cursor: pointer;
     vertical-align: middle;
     overflow: hidden;
+}
+
+#buttons > div {
+    background-color: ###highlight-color###;
+    padding: 0.5em;
+    min-width: 2.5em;
+    height: 2.5em;
+}
+
+#moreButtons > div {
+    background-color: ###background2-color###;
+    padding: 0;
+    min-width: 2.5em;
+    height: 2.5em;
 }
 
 #measuring {
@@ -92,23 +102,38 @@ ul {
     background-image: url(data:image/png;base64,###drawableMore###);
 }
 
+#larger {
+    background-image: url(data:image/png;base64,###drawableLarger###);
+}
+
+#smaller {
+    background-image: url(data:image/png;base64,###drawableSmaller###);
+}
+
 #moreMenu {
     position: absolute;
     display: block;
-    right: 0.2vw;
-    top: 0.2vw;
-    box-shadow: 0 0.8vw 0.8vw rgba(0, 0, 0, 0.1);
+    right: 0.2em;
+    top: 0.2em;
+    box-shadow: 0 0.8em 0.8em rgba(0, 0, 0, 0.1);
     z-index: 2000;
     background: ###background2-color###;
-    font-size: 1.5vw;
 }
 
 #moreMenu li {
-    padding: 1vw;
+    padding: 1em;
 }
 
 #moreMenu li:hover {
     background: ###background2hover-color###;
+}
+
+#moreMenu #moreButtons {
+    padding: 0;
+}
+
+#moreMenu #moreButtons:hover {
+    background: ###background2-color###;
 }
 
 #moreMenu #clear {
@@ -121,14 +146,13 @@ ul {
 
 #titleBar {
     display: inline-block;
-    padding: 0.5vw;
-    height: 3.5vw;
+    padding: 0.5em;
     vertical-align: middle;
 }
 
 #title {
-    height: 3.5vw;
-    font-size: 3.0vw;
+    height: 1.25em;
+    font-size: 200%;
     display: block;
     background: ###highlight-color###;
     padding: 0;
@@ -141,21 +165,19 @@ ul {
 .multiView #viewSelectorBar {
     display: block;
     position: absolute;
-    top: 4.5vw;
+    top: 3.5em;
     left: 0;
     right: 0;
-    box-shadow: 0 0.2vw 0.2vw rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0.2em 0.2em rgba(0, 0, 0, 0.1);
     background: ###background2-color###;
-    height: 3.5vw;
     z-index: 500;
-    font-size: 1.5vw;
     line-height: 1;
 }
 
 #viewSelector li {
     display: inline-block;
     text-transform: uppercase;
-    padding: 1vw;
+    padding: 0.5em;
     cursor: pointer;
 }
 
@@ -166,22 +188,22 @@ ul {
 #viewSelector li.active {
     display: inline-block;
     text-transform: uppercase;
-    padding: 1vw 1vw 0.75vw 1vw;
-    border-bottom: 0.25vw solid ###highlight-color###;
+    padding: 0.5em 0.5em 0.25em 0.5em;
+    border-bottom: 0.25em solid ###highlight-color###;
 }
 
 #views {
     position: absolute;
-    top: 4.5vw;
+    top: 3.5em;
     left: 0;
     right: 0;
     bottom: 0;
     overflow-y: auto;
-    padding-top: 1vw;
+    padding-top: 1em;
 }
 
 .multiView #views {
-    top: 8vw;
+    top: 8em;
 }
 
 .elementBlock {
@@ -189,23 +211,33 @@ ul {
     width: 100%;
 }
 
+.exclusive .elementBlock > div {
+    display: none;
+}
+
+.exclusive .elementBlock > .exclusive {
+    display: block;
+}
+
 .columns2 .elementBlock {
     display: inline-block;
     width: 50%;
-    font-size: 50%;
 }
 
 .columns3 .elementBlock {
     display: inline-block;
     width: 33%;
-    font-size: 33%;
 }
 
 .phone .elementBlock {
     margin: auto;
     display: block;
     width: 57vh;
-    font-size: 2.5vh;
+}
+
+.exclusive .elementBlock {
+    display: inline-block;
+    width: 100%;
 }
 
 .valueElement, .editElement {
@@ -217,25 +249,24 @@ ul {
     display: inline-block;
     text-align: right;
     width: 49%;
-    padding: 0.5%;
+    margin: 0.5%;
 }
 
 .value {
     display: inline-block;
     font-weight: bold;
     width: 49%;
-    padding: 0.5%;
+    margin: 0.5%;
 }
 
 .unit {
     font-weight: bold;
-    padding: 0 0.5%;
+    margin: 0 0.5%;
 }
 
 .editElement .value {
-    font-size: 100%;
     width: 15%;
-    padding: 0 0.5%;
+    margin: 0 0.5%;
 }
 
 .graphElement {
@@ -253,8 +284,16 @@ ul {
     display: block;
     width: 99%;
     font-weight: bold;
-    padding: 0.5%;
     text-align: left;
+    cursor: pointer;
+    background-image: url(data:image/png;base64,###drawableLarger###);
+    background-repeat: no-repeat;
+    background-size: contain;
+    padding-left: 2em;
+}
+
+.graphElement.exclusive .label {
+    background-image: url(data:image/png;base64,###drawableSmaller###);
 }
 
 .graphElement .graphBox {
@@ -266,6 +305,14 @@ ul {
     display: block;
 }
 
+.exclusive .graphElement .graphRatio {
+    display: none;
+}
+
+.exclusive .graphElement .graphBox {
+    height: 90%;
+}
+
 .graphElement .graph {
     display: block;
     position: absolute;
@@ -275,16 +322,9 @@ ul {
     bottom: 0;
 }
 
-.graphElement .graph canvas {
-    width: 100%;
-    height: 100%;
-    max-width: 100%;
-    max-height: 100%;
-}
-
 .infoElement {
     margin: 1% 2%;
-    font-size: smaller;
+    font-size: 75%;
 }
 
 .buttonElement {
@@ -292,7 +332,6 @@ ul {
 }
 
 .buttonElement button {
-    font-size: 100%;
     background: ###background2-color###;
     color: ###main-color###;
     padding: 0 0.5%;
@@ -300,17 +339,8 @@ ul {
 }
 
 .buttonElement button:hover {
-    font-size: 100%;
     background: ###background2hover-color###;
     color: ###main-color###;
-}
-
-.tickLabel, .axisLabels {
-    color: ###main-color###;
-}
-
-.axisLabels {
-    font-size: smaller;
 }
 
 #error {
@@ -323,6 +353,7 @@ ul {
     border-top: 1px solid #ff0000;
     display: none;
     text-align: center;
+    font-size: 200%;
 }
 
 #exportDialog {
@@ -335,7 +366,7 @@ ul {
 }
 
 #exportDialog form {
-    box-shadow: 0 0.4vw 0.4vw rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0.4em 0.4em rgba(0, 0, 0, 0.1);
     display: inline-block;
     background: ###background2-color###;
     text-align: left;
