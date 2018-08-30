@@ -28,8 +28,6 @@
     var elementData = [];
     var nViews = views.length;
     var nElements = 1*(views[nViews-1]["elements"][views[nViews-1]["elements"].length-1]["index"])+1;
-    for (i = 0; i < nElements; i++)
-        elementData[i] = {};
 
     var measuring = true;
     var countDown = 0;
@@ -88,8 +86,8 @@
         var namePart = encodeURIComponent(name);
         if (partial == "full")
             return namePart + "=full";
-        if (partial == "partial") {
-            if ((!forceFull) && data.hasOwnProperty(partialComponent) && data[partialComponent]["data"].length > 0) {
+        if (partial == "partial" || partial == "partialXYZ") {
+            if ((!forceFull) && data.hasOwnProperty(partialComponent) && data[partialComponent]["data"].length > 0 && data.hasOwnProperty(name) && data[name]["data"].length > 0) {
                 if (partialComponent == name)
                     return namePart + "=" + data[partialComponent]["data"][data[partialComponent]["data"].length-1];
                 else {
@@ -108,12 +106,18 @@
         views[currentView]["elements"].forEach(function(ve) {
             if (ve.hasOwnProperty("dataInput")) {
                 for (var index = 0; index < ve["dataInput"].length; index++) {
+                    if (ve["dataInput"][index] == null)
+                        continue;
                     if (usedVars.indexOf(ve["dataInput"][index]) < 0) {
                         if (ve["updateMode"] == "single" || ve["updateMode"] == "input") {
                             varStr.push(composeVarStr(ve["dataInput"][index], "single"));
                             usedVars.push(ve["dataInput"][index]);
                         } else if (ve["updateMode"] == "partial" || ve["updateMode"] == "full") {
                             var dependentVar = ((ve["dataInput"].length > index + 1) && (index % 2 == 0)) ? ve["dataInput"][index+1] : ve["dataInput"][index];
+                            varStr.push(composeVarStr(ve["dataInput"][index], ve["updateMode"], dependentVar));
+                            usedVars.push(ve["dataInput"][index]);
+                        } else if (ve["updateMode"] == "partialXYZ") {
+                            var dependentVar = ve["dataInput"][Math.floor(index / 3)];
                             varStr.push(composeVarStr(ve["dataInput"][index], ve["updateMode"], dependentVar));
                             usedVars.push(ve["dataInput"][index]);
                         }
@@ -415,7 +419,6 @@
         },
         afterUpdate: function(chart) {
             if (chart.tooltip._active) {
-                console.log(chart.tooltip);
                 chart.tooltip.update();
             }
         }
@@ -432,6 +435,93 @@
                 ticks.splice(ticks.length-1,1);
         }
     }
+
+    //Colormap graph style
+    Chart.defaults.colormap = Chart.defaults.line;
+    var colormap = Chart.controllers.line.extend({
+        draw: function(ease) {
+
+            var meta = this.getMeta();
+            var data = this.getDataset().data;
+            var chartArea = this.chart.chartArea;
+            var mapwidth = meta.controller.chart.config.mapwidth;
+            var colorscale= meta.controller.chart.config.colorscale;
+            var mapheight = data.length/mapwidth;
+
+            if (!(mapheight > 0))
+                return;
+
+            var mapCanvas = document.createElement('canvas');
+            mapCanvas.width = mapwidth;
+            mapCanvas.height = mapheight;
+            var mapctx = mapCanvas.getContext("2d");
+
+            var minZ = meta.controller.chart.minZ;
+            var maxZ = meta.controller.chart.maxZ;
+            var logZ = meta.controller.chart.logZ;
+
+            if (logZ) {
+                if (minZ < 1e-12)
+                    minZ = 1e-12;
+                if (maxZ < 1e-12)
+                    maxZ = 1e-12;
+                minZ = Math.log(minZ);
+                maxZ = Math.log(maxZ);
+            }
+
+            var map = mapctx.createImageData(mapwidth, mapheight);
+
+            var onScaleFactor = (colorscale.length-1) / (maxZ - minZ);
+            for (var i = 0; i < mapwidth * mapheight; i++) {
+                var z = data[i].z;
+                if (logZ) {
+                    if (z < 1e-12)
+                        continue;
+                    z = Math.log(z);
+                }
+
+                var onColorScale = (z - minZ) * onScaleFactor;
+
+                var index = Math.floor(onColorScale);
+                if (index > colorscale.length-2)
+                    index = colorscale.length-2;
+                else if (index < 0)
+                    index = 0;
+
+                var inbetween = onColorScale - index;
+                if (inbetween > 1)
+                    inbetween = 1;
+                else if (inbetween < 0)
+                    inbetween = 0;
+
+                var r1 = (colorscale[index] & 0x00ff0000) >>> 16;
+                var g1 = (colorscale[index] & 0x0000ff00) >>> 8;
+                var b1 = (colorscale[index] & 0x000000ff) >>> 0;
+                var r2 = (colorscale[index+1] & 0x00ff0000) >>> 16;
+                var g2 = (colorscale[index+1] & 0x0000ff00) >>> 8;
+                var b2 = (colorscale[index+1] & 0x000000ff) >>> 0;
+
+                var r = Math.round(r1 * (1.-inbetween) + r2 * inbetween) & 0xff;
+                var g = Math.round(g1 * (1.-inbetween) + g2 * inbetween) & 0xff;
+                var b = Math.round(b1 * (1.-inbetween) + b2 * inbetween) & 0xff;
+
+                map.data[4*i] = r;
+                map.data[4*i+1] = g;
+                map.data[4*i+2] = b;
+                map.data[4*i+3] = 255;
+            }
+            mapctx.putImageData(map, 0, 0);
+
+            var ctx = this.chart.chart.ctx;
+            ctx.save();
+            ctx.scale(1, -1);
+            ctx.drawImage(mapCanvas, 0.5, 0.5, mapwidth-1, mapheight-1, chartArea.left, -chartArea.bottom, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+            ctx.restore();
+
+            Chart.controllers.line.prototype.draw.call(this, ease);
+        }
+    });
+    Chart.controllers.colormap = colormap;
 
     </script>
 </head>
@@ -450,7 +540,7 @@
                 <li id="switchColumns1" onclick="switchColumns(1)"><!-- [[switchColumns1Translation]] --></li>
                 <li id="switchColumns2" onclick="switchColumns(2)"><!-- [[switchColumns2Translation]] --></li>
                 <li id="switchColumns3" onclick="switchColumns(3)"><!-- [[switchColumns3Translation]] --></li>
-                <li id="moreButtons"><div id="larger" onclick="zoomLarger(event)"></div><div id="smaller" onclick="zoomSmaller(event)"></div></li>
+                <li class="moreButtons"><span class="circleButton" id="larger" onclick="zoomSmaller(event)">&minus;</span><!-- [[fontSizeTranslation]] --><span  class="circleButton" id="smaller" onclick="zoomLarger(event)">+</span></li>
             </ul>
         </div>
     </div>

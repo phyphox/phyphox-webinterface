@@ -42,29 +42,19 @@ ul {
     vertical-align: middle;
 }
 
-#buttons > div, #moreButtons > div {
+#buttons > div {
     display: inline-block;
     background-repeat: no-repeat;
     background-position: center center;
     background-size: 80%;
     text-align: center;
-    cursor: pointer;
     vertical-align: middle;
     overflow: hidden;
-}
-
-#buttons > div {
     background-color: ###highlight-color###;
     padding: 0.5em;
     min-width: 2.5em;
     height: 2.5em;
-}
-
-#moreButtons > div {
-    background-color: ###background2-color###;
-    padding: 0;
-    min-width: 2.5em;
-    height: 2.5em;
+    cursor: pointer;
 }
 
 #measuring {
@@ -128,16 +118,37 @@ ul {
     background: ###background2hover-color###;
 }
 
-#moreMenu #moreButtons {
-    padding: 0;
+#moreMenu .moreButtons:hover {
+    background: ###background2-color###;;
 }
 
-#moreMenu #moreButtons:hover {
-    background: ###background2-color###;
+.circleButton {
+    display: inline-block;
+    border-radius: 2em;
+    border: 1px solid white;
+    width: 1.1em;
+    height: 1.1em;
+    cursor: pointer;
+    margin: -0.5em 0.5em;
+    font-size: 150%;
+    vertical-align: middle;
 }
 
-#moreMenu #clear {
-    color: #ff4040;
+.circleButton:hover {
+    background: ###background2hover-color###;
+}
+
+.warningIcon {
+    color: #ff7e22;
+    width: 1em;
+    height: 1em;
+    position: absolute;
+    top: 0;
+    right: 0;
+    cursor: pointer;
+    background-image: url(data:image/png;base64,###drawableWarning###);
+    background-repeat: no-repeat;
+    background-size: contain;
 }
 
 .columns1 #switchColumns1, .columns2 #switchColumns2, .columns3 #switchColumns3, .phone #switchToPhoneLayout {
@@ -273,6 +284,7 @@ ul {
     display: block;
     width: 80%;
     margin: 0 10%;
+    position: relative;
 }
 
 .phone .graphElement {
@@ -286,14 +298,14 @@ ul {
     font-weight: bold;
     text-align: left;
     cursor: pointer;
-    background-image: url(data:image/png;base64,###drawableLarger###);
+    background-image: url(data:image/png;base64,###drawableMaximize###);
     background-repeat: no-repeat;
     background-size: contain;
     padding-left: 2em;
 }
 
 .graphElement.exclusive .label {
-    background-image: url(data:image/png;base64,###drawableSmaller###);
+    background-image: url(data:image/png;base64,###drawableRestore###);
 }
 
 .graphElement .graphBox {
