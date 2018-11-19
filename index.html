@@ -177,6 +177,9 @@
     }
 
     function updateMeasuring(s) {
+        if (fatalStop)
+            return;
+
         if (measuring != s["measuring"])
             forceFull = true;
         if (sessionID == "")
@@ -208,10 +211,8 @@
     }
 
     function askSessionReload() {
-        if (window.confirm("The phyphox session has changed. Do you want to reload this window?")) {
+        if (window.confirm("The phyphox session has changed. Do you want to reload this window?"))
             window.location.reload(true);
-        } else
-            sessionID = "";
     }
 
     function updateViews() {
