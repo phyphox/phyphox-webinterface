@@ -92,14 +92,6 @@ ul {
     background-image: url(data:image/png;base64,###drawableMore###);
 }
 
-#larger {
-    background-image: url(data:image/png;base64,###drawableLarger###);
-}
-
-#smaller {
-    background-image: url(data:image/png;base64,###drawableSmaller###);
-}
-
 #moreMenu {
     position: absolute;
     display: block;
