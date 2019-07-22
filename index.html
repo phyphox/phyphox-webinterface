@@ -37,6 +37,21 @@
 
     var body, header, viewsNode, viewSelector, exportDialog, moreMenu, errorNode;
 
+    //Store settings to cookie
+    function saveSettings(name, value) {
+        document.cookie = name + "=" + value;
+    }
+
+    //Restore settings from cookie
+    function getSetting(name) {
+        var regex = new RegExp("[; ]"+name+"=([^\\s;]*)");
+        var m = (";"+document.cookie).match(regex);
+        if (m != null && m.length > 1)
+            return m[1];
+        else
+            return null;
+    }
+
     //We implement a simple queue for ajax to avoid concurrent requests as phyphox is not designed for parallel handling of http requests
     var ajaxRequestQueue = [];
     var ajaxRequestRunning = false;
@@ -272,6 +287,7 @@
     }
 
     function switchColumns(columns) {
+        saveSettings("columns", columns);
         leaveExclusive();
         if (body.classList) {
             body.classList.remove("columns1");
@@ -285,6 +301,7 @@
     }
 
     function switchToPhoneLayout() {
+        saveSettings("columns", 0);
         leaveExclusive();
         if (body.classList) {
             body.classList.remove("columns1");
@@ -340,7 +357,8 @@
         leaveExclusive();
         if (scaleFactor < 3)
             scaleFactor *= 1.2;
-        document.getElementsByTagName("body")[0].style.fontSize = (100*scaleFactor)+"%";
+        saveSettings("scaleFactor", scaleFactor);
+        body.style.fontSize = (100*scaleFactor)+"%";
         e.stopPropagation();
         recreateViews();
     }
@@ -349,7 +367,8 @@
         leaveExclusive();
         if (scaleFactor > 0.5)
             scaleFactor /= 1.2;
-        document.getElementsByTagName("body")[0].style.fontSize = (100*scaleFactor)+"%";
+        saveSettings("scaleFactor", scaleFactor);
+        body.style.fontSize = (100*scaleFactor)+"%";
         e.stopPropagation();
         recreateViews();
     }
@@ -384,6 +403,12 @@
         exportDialog = document.getElementById("exportDialog");
         moreMenu = document.getElementById("moreMenu");
         errorNode = document.getElementById("error");
+
+        var sf = getSetting("scaleFactor");
+        if (sf)
+            scaleFactor = sf;
+        body.style.fontSize = (100*scaleFactor)+"%";
+
         if (nViews > 1) {
             if (body.classList)
                 body.classList.add("multiView");
@@ -401,7 +426,13 @@
             liElements[i].addEventListener("click", switchViewCaller(i));
         }
         switchView(0);
-        switchToPhoneLayout();
+
+        var columns = getSetting("columns");
+        if (columns > 0)
+            switchColumns(columns);
+        else
+            switchToPhoneLayout();
+
         exportDialog.getElementsByTagName("form")[0].addEventListener("submit", hideExport);
 
         updateData();
