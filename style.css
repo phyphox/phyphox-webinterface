@@ -4,11 +4,14 @@
 }
 
 body, html {
-    background: #404040;
-    color: #ffffff;
     font-size: 100%;
     font-family: sans-serif;
     overflow: hidden;
+}
+
+body {
+    background: #404040;
+    color: #ffffff;
 }
 
 body.brightMode {

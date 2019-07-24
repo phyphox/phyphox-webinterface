@@ -488,7 +488,7 @@
         moreMenu = document.getElementById("moreMenu");
         errorNode = document.getElementById("error");
 
-        brightMode = getSetting("brightMode");
+        brightMode = (getSetting("brightMode") == "true");
         body.classList.toggle("brightMode", brightMode);
 
         var sf = getSetting("scaleFactor");
