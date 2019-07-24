@@ -34,11 +34,12 @@
     var forceFull = false;
 
     var scaleFactor = 1.0;
+    var brightmode = false;
 
     var body, header, viewsNode, viewSelector, exportDialog, moreMenu, errorNode;
 
     //Store settings to cookie
-    function saveSettings(name, value) {
+    function saveSetting(name, value) {
         document.cookie = name + "=" + value;
     }
 
@@ -50,6 +51,104 @@
             return m[1];
         else
             return null;
+    }
+
+    //Color helpers
+    //https://stackoverflow.com/a/17243070/8068814
+    function HSVtoRGB(hsv) {
+        var r, g, b, i, f, p, q, t, h, s, v;
+        h = hsv.h;
+        s = hsv.s;
+        v = hsv.v;
+        i = Math.floor(h * 6);
+        f = h * 6 - i;
+        p = v * (1 - s);
+        q = v * (1 - f * s);
+        t = v * (1 - (1 - f) * s);
+        switch (i % 6) {
+            case 0: r = v, g = t, b = p; break;
+            case 1: r = q, g = v, b = p; break;
+            case 2: r = p, g = v, b = t; break;
+            case 3: r = p, g = q, b = v; break;
+            case 4: r = t, g = p, b = v; break;
+            case 5: r = v, g = p, b = q; break;
+        }
+        var rgb = Math.round(r * 255) * 256 * 256 + Math.round(g * 255) * 256 + Math.round(b * 255);
+        return "#"+ ('000000' + ((rgb)>>>0).toString(16)).slice(-6);
+    }
+
+    function stringToRGB(rgb) {
+        var r,g,b;
+        var rgbsep = rgb.replace(/[^\d,]/g, '').split(',');
+        if (rgbsep.length == 3) {
+            r = parseInt(rgbsep[0]);
+            g = parseInt(rgbsep[1]);
+            b = parseInt(rgbsep[2]);
+        } else {
+            var i = parseInt(rgb.slice(1), 16);
+            r = (i >> 16) & 255;
+            g = (i >> 8) & 255;
+            b = i & 255;
+        }
+        return {r:r, g:g, b:b};
+    }
+
+    function RGBtoHSV(rgb) {
+        var r = rgb.r;
+        var g = rgb.g;
+        var b = rgb.b;
+
+        var max = Math.max(r, g, b), min = Math.min(r, g, b),
+            d = max - min,
+            h,
+            s = (max === 0 ? 0 : d / max),
+            v = max / 255;
+
+        switch (max) {
+            case min: h = 0; break;
+            case r: h = (g - b) + d * (g < b ? 6: 0); h /= 6 * d; break;
+            case g: h = (b - r) + d * 2; h /= 6 * d; break;
+            case b: h = (r - g) + d * 4; h /= 6 * d; break;
+        }
+
+        return {
+            h: h,
+            s: s,
+            v: v
+        };
+    }
+
+    //Convert colors if in bright mode
+    function adjustableColor(c) {
+        if (brightMode) {
+            //Convert to HSV, to HSL, invert Lightness and convert back to HSL and HSV
+            var rgb = stringToRGB(c);
+            if (rgb.r == 0x40 && rgb.g == 0x40 && rgb.b == 0x40)
+                return "#ffffff";
+            var hsv = RGBtoHSV(rgb);
+            var l = (2.0 - hsv.s) * hsv.v / 2.0;
+            var s = l && l<1 ? hsv.s*hsv.v/(l < 0.5 ? l*2.0 : 2.0 - l*2.0) : 0.0
+            l = 1.0 - l;
+            var t = s * (l < 0.5 ? l : 1.0-l);
+            hsv.v = l+t;
+            hsv.s = l > 0 ? 2*t/hsv.v : 0.0;
+            return HSVtoRGB(hsv);
+        } else {
+            return c;
+        }
+    }
+
+    function adjustColors() {
+        var adjustables = document.getElementsByClassName("adjustableColor");
+        for(var i = 0; i < adjustables.length; i++) {
+            var adjustable = adjustables[i];
+            console.log(adjustable.style.color);
+            console.log(adjustable.style.backgroundColor);
+            if (adjustable.style.color != null)
+                adjustable.style.color = adjustableColor(adjustable.style.color);
+            if (adjustable.style.backgroundColor != null)
+                adjustable.style.backgroundColor = adjustableColor(adjustable.style.backgroundColor);
+        }
     }
 
     //We implement a simple queue for ajax to avoid concurrent requests as phyphox is not designed for parallel handling of http requests
@@ -206,18 +305,14 @@
         measuring = s["measuring"];
         timedRun = s["timedRun"];
         countDown = s["countDown"];
-        if (header.classList) {
-            if (measuring)
-                header.classList.add("active");
-            else
-                header.classList.remove("active");
-            if (countDown != 0)
-                header.classList.add("countdown");
-            else
-                header.classList.remove("countdown");
-        } else {
-            header.className = (measuring ? "active" : "") + " " + (countDown != 0 ? "countdown" : "");
-        }
+        if (measuring)
+            header.classList.add("active");
+        else
+            header.classList.remove("active");
+        if (countDown != 0)
+            header.classList.add("countdown");
+        else
+            header.classList.remove("countdown");
         if (countDown != 0) {
             document.getElementById("countdown").textContent = Math.ceil(countDown/1000) + "s";
         } else {
@@ -246,6 +341,7 @@
         views[currentView]["elements"].forEach(function(ve) {
             viewsNode.innerHTML += ("<div class=\"elementBlock\">" + ve["html"] + "</div>");
         });
+        adjustColors();
         forceFull = true;
     }
 
@@ -258,14 +354,10 @@
         var liElements = viewSelector.getElementsByTagName("li");
         for (var i = 0; i < liElements.length; i++) {
             var el = liElements[i];
-            if (el.classList) {
-                if (i == currentView)
-                    el.classList.add("active");
-                else
-                    el.classList.remove("active");
-            } else {
-                el.className = (i == currentView) ? "active" : "";
-            }
+            if (i == currentView)
+                el.classList.add("active");
+            else
+                el.classList.remove("active");
         };
         recreateViews();
     }
@@ -287,61 +379,37 @@
     }
 
     function switchColumns(columns) {
-        saveSettings("columns", columns);
+        saveSetting("columns", columns);
         leaveExclusive();
-        if (body.classList) {
-            body.classList.remove("columns1");
-            body.classList.remove("columns2");
-            body.classList.remove("columns3");
-            body.classList.remove("phone");
-            body.classList.add("columns"+columns);
-        } else {
-            body.className = "columns"+columns;
-        }
+        body.classList.remove("columns1");
+        body.classList.remove("columns2");
+        body.classList.remove("columns3");
+        body.classList.remove("phone");
+        body.classList.add("columns"+columns);
     }
 
     function switchToPhoneLayout() {
-        saveSettings("columns", 0);
+        saveSetting("columns", 0);
         leaveExclusive();
-        if (body.classList) {
-            body.classList.remove("columns1");
-            body.classList.remove("columns2");
-            body.classList.remove("columns3");
-            body.classList.add("phone");
-        } else {
-            body.className = "phone";
-        }
+        body.classList.remove("columns1");
+        body.classList.remove("columns2");
+        body.classList.remove("columns3");
+        body.classList.add("phone");
     }
 
     function setExclusive(i) {
-        if (body.classList) {
-            body.classList.add("exclusive");
-        } else {
-            body.className += " exclusive";
-        }
+        body.classList.add("exclusive");
         var elem = document.getElementById("element"+i);
-        if (elem.classList) {
-            elem.classList.add("exclusive");
-        } else {
-            elem.className += " exclusive";
-        }
+        elem.classList.add("exclusive");
     }
 
     function leaveExclusive() {
-        if (body.classList) {
-            body.classList.remove("exclusive");
-        } else {
-            body.className.replace(/\bexclusive\b/g, "");
-        }
+        body.classList.remove("exclusive");
 
         var elements = document.getElementsByClassName("exclusive");
         for (var i = 0; i < elements.length; i++) {
             var elem = elements[i];
-            if (elem.classList) {
-                elem.classList.remove("exclusive");
-            } else {
-                elem.className.replace(/\bexclusive\b/g, "");
-            }
+            elem.classList.remove("exclusive");
         };
     }
 
@@ -357,7 +425,7 @@
         leaveExclusive();
         if (scaleFactor < 3)
             scaleFactor *= 1.2;
-        saveSettings("scaleFactor", scaleFactor);
+        saveSetting("scaleFactor", scaleFactor);
         body.style.fontSize = (100*scaleFactor)+"%";
         e.stopPropagation();
         recreateViews();
@@ -367,9 +435,25 @@
         leaveExclusive();
         if (scaleFactor > 0.5)
             scaleFactor /= 1.2;
-        saveSettings("scaleFactor", scaleFactor);
+        saveSetting("scaleFactor", scaleFactor);
         body.style.fontSize = (100*scaleFactor)+"%";
         e.stopPropagation();
+        recreateViews();
+    }
+
+    function zoomDefault(e) {
+        leaveExclusive();
+        scaleFactor = 1.0;
+        saveSetting("scaleFactor", scaleFactor);
+        body.style.fontSize = (100*scaleFactor)+"%";
+        e.stopPropagation();
+        recreateViews();
+    }
+
+    function toggleBrightMode(e) {
+        brightMode = body.classList.toggle("brightMode");
+        
+        saveSetting("brightMode", brightMode);
         recreateViews();
     }
 
@@ -404,16 +488,16 @@
         moreMenu = document.getElementById("moreMenu");
         errorNode = document.getElementById("error");
 
+        brightMode = getSetting("brightMode");
+        body.classList.toggle("brightMode", brightMode);
+
         var sf = getSetting("scaleFactor");
         if (sf)
             scaleFactor = sf;
         body.style.fontSize = (100*scaleFactor)+"%";
 
         if (nViews > 1) {
-            if (body.classList)
-                body.classList.add("multiView");
-            else
-                body.className += " multiView";
+            body.classList.add("multiView");
         }
         body.addEventListener("click", hideMenu);
         hideMenu();
@@ -445,7 +529,7 @@
         afterDatasetsDraw: function(chartInstance) {
             var ctx = chartInstance.chart.ctx;
             var chartArea = chartInstance.chartArea;
-            ctx.strokeStyle = "#ffffff";
+            ctx.strokeStyle = adjustableColor("#ffffff");
             ctx.lineWidth = scaleFactor;
             ctx.strokeRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
         },
@@ -572,7 +656,8 @@
                 <li id="switchColumns1" onclick="switchColumns(1)"><!-- [[switchColumns1Translation]] --></li>
                 <li id="switchColumns2" onclick="switchColumns(2)"><!-- [[switchColumns2Translation]] --></li>
                 <li id="switchColumns3" onclick="switchColumns(3)"><!-- [[switchColumns3Translation]] --></li>
-                <li class="moreButtons"><span class="circleButton" id="larger" onclick="zoomSmaller(event)">&minus;</span><!-- [[fontSizeTranslation]] --><span  class="circleButton" id="smaller" onclick="zoomLarger(event)">+</span></li>
+                <li id="toggleBrightMode" onclick="toggleBrightMode()"><!-- [[toggleBrightModeTranslation]] --><span class="circleButton" id="brightModeCheck">&nbsp;</span></li>
+                <li class="moreButtons"><!-- [[fontSizeTranslation]] --><span class="circleButton" id="larger" onclick="zoomSmaller(event)">&minus;</span><span class="circleButton" id="larger" onclick="zoomDefault(event)">1</span><span  class="circleButton" id="smaller" onclick="zoomLarger(event)">+</span></li>
             </ul>
         </div>
     </div>

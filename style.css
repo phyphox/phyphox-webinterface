@@ -4,11 +4,16 @@
 }
 
 body, html {
-    background: ###background-color###;
-    color: ###main-color###;
+    background: #404040;
+    color: #ffffff;
     font-size: 100%;
     font-family: sans-serif;
     overflow: hidden;
+}
+
+body.brightMode {
+    color: #404040;
+    background: #ffffff;
 }
 
 ul {
@@ -23,8 +28,8 @@ ul {
     top: 0;
     z-index: 1000;
     white-space: nowrap;
-    background-color: ###highlight-color###;
-    box-shadow: 0 0.4em 0.4em rgba(0, 0, 0, 0.2);
+    background-color: #ff7e22;
+    box-shadow: 0 0.2em 0.2em rgba(0, 0, 0, 0.2);
 }
 
 #logo {
@@ -47,10 +52,10 @@ ul {
     background-repeat: no-repeat;
     background-position: center center;
     background-size: 80%;
-    text-align: center;
+    text-align: left;
     vertical-align: middle;
     overflow: hidden;
-    background-color: ###highlight-color###;
+    background-color: #ff7e22;
     padding: 0.5em;
     min-width: 2.5em;
     height: 2.5em;
@@ -97,9 +102,13 @@ ul {
     display: block;
     right: 0.2em;
     top: 0.2em;
-    box-shadow: 0 0.8em 0.8em rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0.4em rgba(0, 0, 0, 0.3);
     z-index: 2000;
-    background: ###background2-color###;
+    background: #606060;
+}
+
+.brightMode #moreMenu {
+    background: #f0f0f0;
 }
 
 #moreMenu li {
@@ -107,11 +116,19 @@ ul {
 }
 
 #moreMenu li:hover {
-    background: ###background2hover-color###;
+    background: #808080;
+}
+
+.brightMode #moreMenu li:hover {
+    background: #e0e0e0;
 }
 
 #moreMenu .moreButtons:hover {
-    background: ###background2-color###;;
+    background: #606060;
+}
+
+.brightMode #moreMenu .moreButtons:hover {
+    background: #e0e0e0;
 }
 
 .circleButton {
@@ -121,13 +138,32 @@ ul {
     width: 1.1em;
     height: 1.1em;
     cursor: pointer;
-    margin: -0.5em 0.5em;
+    margin: -0.5em 0 -0.5em 0.5em;
     font-size: 150%;
     vertical-align: middle;
+    text-align: center;
+}
+
+.brightMode .circleButton {
+    border: 1px solid black;
 }
 
 .circleButton:hover {
-    background: ###background2hover-color###;
+    background: #808080;
+}
+
+.brightMode .circleButton:hover {
+    background: #e0e0e0;
+}
+
+#brightModeCheck {
+    width: 0.8em;
+    height: 0.8em;
+}
+
+.brightMode #brightModeCheck {
+    background: #000000;
+    box-shadow: inset 0 0 0.1em 0.2em #f0f0f0;
 }
 
 .warningIcon {
@@ -157,8 +193,9 @@ ul {
     height: 1.25em;
     font-size: 200%;
     display: block;
-    background: ###highlight-color###;
+    background: #ff7e22;
     padding: 0;
+    color: white;
 }
 
 #viewSelectorBar {
@@ -171,10 +208,14 @@ ul {
     top: 3.5em;
     left: 0;
     right: 0;
-    box-shadow: 0 0.2em 0.2em rgba(0, 0, 0, 0.1);
-    background: ###background2-color###;
+    box-shadow: 0 0.1em 0.1em rgba(0, 0, 0, 0.1);
+    background: #606060;
     z-index: 500;
     line-height: 1;
+}
+
+.brightMode.multiView #viewSelectorBar {
+    background: #f0f0f0;
 }
 
 #viewSelector li {
@@ -185,14 +226,18 @@ ul {
 }
 
 #viewSelector li:hover {
-    background: ###background2hover-color###;
+    background: #808080;
+}
+
+.brightMode #viewSelector li:hover {
+    background: #e0e0e0;
 }
 
 #viewSelector li.active {
     display: inline-block;
     text-transform: uppercase;
     padding: 0.5em 0.5em 0.25em 0.5em;
-    border-bottom: 0.25em solid ###highlight-color###;
+    border-bottom: 0.25em solid #ff7e22;
 }
 
 #views {
@@ -336,15 +381,26 @@ ul {
 }
 
 .buttonElement button {
-    background: ###background2-color###;
-    color: ###main-color###;
+    background: #606060;
+    color: #ffffff;
     padding: 0 0.5%;
     margin: 0.5% auto;
+    font-size: 1em;
+}
+
+.brightMode .buttonElement button {
+    color: #000000;
+    background: #f0f0f0;
 }
 
 .buttonElement button:hover {
-    background: ###background2hover-color###;
-    color: ###main-color###;
+    background: #808080;
+    color: #ffffff;
+}
+
+.brightMode .buttonElement button:hover {
+    color: #000000;
+    background: #e0e0e0;
 }
 
 #error {
@@ -354,6 +410,7 @@ ul {
     right: 0;
     bottom: 0;
     background: #800000;
+    color: white;
     border-top: 1px solid #ff0000;
     display: none;
     text-align: center;
@@ -370,11 +427,15 @@ ul {
 }
 
 #exportDialog form {
-    box-shadow: 0 0.4em 0.4em rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0.2em rgba(0, 0, 0, 0.3);
     display: inline-block;
-    background: ###background2-color###;
+    background: #606060;
     text-align: left;
     padding: 1%;
+}
+
+.brightMode #exportDialog form {
+    background: #f0f0f0;
 }
 
 #exportDialog form .setSelector {
