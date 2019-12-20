@@ -242,6 +242,15 @@
         forceFull = false;
     }
 
+    function nullToNaN(array) {
+        for (var i = 0; i < array.length; i++) {
+            if (array[i] == null) {
+              array[i] = NaN;
+            }
+        }
+        return array;
+    }
+
     function updateData() {
         updateUsedVarStr();
         ajax("get?" + usedVarStr,
@@ -252,13 +261,13 @@
                             data[index]["changed"] = false;
                             continue;
                         }
-                        data[index]["data"] = data[index]["data"].concat(jsonData["buffer"][index]["buffer"]);
+                        data[index]["data"] = data[index]["data"].concat(nullToNaN(jsonData["buffer"][index]["buffer"]));
                         if (jsonData["buffer"][index]["size"] > 0)
                             data[index]["data"].splice(0, data[index]["data"].length - jsonData["buffer"][index]["size"]);
                         data[index]["changed"] = true;
                     } else {
                         data[index] = {};
-                        data[index]["data"] = jsonData["buffer"][index]["buffer"];
+                        data[index]["data"] = nullToNaN(jsonData["buffer"][index]["buffer"]);
                         data[index]["changed"] = true;
                     }
                 }
