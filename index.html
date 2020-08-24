@@ -140,8 +140,6 @@
         var adjustables = document.getElementsByClassName("adjustableColor");
         for(var i = 0; i < adjustables.length; i++) {
             var adjustable = adjustables[i];
-            console.log(adjustable.style.color);
-            console.log(adjustable.style.backgroundColor);
             if (adjustable.style.color != null)
                 adjustable.style.color = adjustableColor(adjustable.style.color);
             if (adjustable.style.backgroundColor != null)
