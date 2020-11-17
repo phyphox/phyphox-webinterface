@@ -212,31 +212,46 @@
 
     function updateUsedVarStr() {
         var usedVars = [];
-        var varStr = [];
+        var modePriority = [];
         views[currentView]["elements"].forEach(function(ve) {
             if (ve.hasOwnProperty("dataInput")) {
                 for (var index = 0; index < ve["dataInput"].length; index++) {
                     if (ve["dataInput"][index] == null)
                         continue;
-                    if (usedVars.indexOf(ve["dataInput"][index]) < 0) {
-                        if (ve["updateMode"] == "single" || ve["updateMode"] == "input") {
-                            varStr.push(composeVarStr(ve["dataInput"][index], "single"));
-                            usedVars.push(ve["dataInput"][index]);
-                        } else if (ve["updateMode"] == "partial" || ve["updateMode"] == "full") {
-                            var dependentVar = ((ve["dataInput"].length > index + 1) && (index % 2 == 0)) ? ve["dataInput"][index+1] : ve["dataInput"][index];
-                            varStr.push(composeVarStr(ve["dataInput"][index], ve["updateMode"], dependentVar));
-                            usedVars.push(ve["dataInput"][index]);
-                        } else if (ve["updateMode"] == "partialXYZ") {
-                            var dependentVar = ve["dataInput"][Math.floor(index / 3)];
-                            varStr.push(composeVarStr(ve["dataInput"][index], ve["updateMode"], dependentVar));
-                            usedVars.push(ve["dataInput"][index]);
-                        }
+                    let varStr = ve["dataInput"][index];
+                    if (ve["updateMode"] == "single" || ve["updateMode"] == "input") {
+                        if (modePriority[varStr] >= 1)
+                            continue;
+                        usedVars[varStr] = composeVarStr(varStr, "single");
+                        modePriority[varStr] = 1;
+                    } else if (ve["updateMode"] == "partial") {
+                        if (modePriority[varStr] >= 2)
+                            continue;
+                        var dependentVar = ((ve["dataInput"].length > index + 1) && (index % 2 == 0)) ? ve["dataInput"][index+1] : ve["dataInput"][index];
+                        usedVars[varStr] = composeVarStr(varStr, "partial", dependentVar);
+                        modePriority[varStr] = 2;
+                    } else if (ve["updateMode"] == "partialXYZ") {
+                        if (modePriority[varStr] >= 3)
+                            continue;
+                        var dependentVar = ve["dataInput"][Math.floor(index / 3)];
+                        usedVars[varStr] = composeVarStr(varStr, "partialXYZ", dependentVar);
+                        modePriority[varStr] = 3;
+                    } else if (ve["updateMode"] == "full") {
+                        if (modePriority[varStr] >= 4)
+                            continue;
+                        usedVars[varStr] = composeVarStr(varStr, "full");
+                        modePriority[varStr] = 4;
                     }
                 }
             }
         });
 
-        usedVarStr = varStr.join("&");
+        usedVarStr = "";
+        for (var usedVar in usedVars) {
+            if (usedVarStr != "")
+                usedVarStr += "&";
+            usedVarStr += usedVars[usedVar];
+        }
         forceFull = false;
     }
 
@@ -457,7 +472,7 @@
 
     function toggleBrightMode(e) {
         brightMode = body.classList.toggle("brightMode");
-        
+
         saveSetting("brightMode", brightMode);
         recreateViews();
     }
@@ -662,7 +677,7 @@
                 <li id="switchColumns2" onclick="switchColumns(2)"><!-- [[switchColumns2Translation]] --></li>
                 <li id="switchColumns3" onclick="switchColumns(3)"><!-- [[switchColumns3Translation]] --></li>
                 <li id="toggleBrightMode" onclick="toggleBrightMode()"><!-- [[toggleBrightModeTranslation]] --><span class="circleButton" id="brightModeCheck">&nbsp;</span></li>
-                <li class="moreButtons"><!-- [[fontSizeTranslation]] --><span class="circleButton" id="larger" onclick="zoomSmaller(event)">&minus;</span><span class="circleButton" id="larger" onclick="zoomDefault(event)">1</span><span  class="circleButton" id="smaller" onclick="zoomLarger(event)">+</span></li>
+                <li class="moreButtons"><!-- [[fontSizeTranslation]] --><span class="circleButton" id="larger" onclick="zoomSmaller(event)">&minus;</span><span class="circleButton" id="default" onclick="zoomDefault(event)">1</span><span  class="circleButton" id="smaller" onclick="zoomLarger(event)">+</span></li>
             </ul>
         </div>
     </div>
