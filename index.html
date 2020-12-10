@@ -219,28 +219,29 @@
                     if (ve["dataInput"][index] == null)
                         continue;
                     let varStr = ve["dataInput"][index];
+                    let varKey = "buffer:" + varStr;
                     if (ve["updateMode"] == "single" || ve["updateMode"] == "input") {
                         if (modePriority[varStr] >= 1)
                             continue;
-                        usedVars[varStr] = composeVarStr(varStr, "single");
-                        modePriority[varStr] = 1;
+                        usedVars[varKey] = composeVarStr(varStr, "single");
+                        modePriority[varKey] = 1;
                     } else if (ve["updateMode"] == "partial") {
-                        if (modePriority[varStr] >= 2)
+                        if (modePriority[varKey] >= 2)
                             continue;
                         var dependentVar = ((ve["dataInput"].length > index + 1) && (index % 2 == 0)) ? ve["dataInput"][index+1] : ve["dataInput"][index];
-                        usedVars[varStr] = composeVarStr(varStr, "partial", dependentVar);
-                        modePriority[varStr] = 2;
+                        usedVars[varKey] = composeVarStr(varStr, "partial", dependentVar);
+                        modePriority[varKey] = 2;
                     } else if (ve["updateMode"] == "partialXYZ") {
-                        if (modePriority[varStr] >= 3)
+                        if (modePriority[varKey] >= 3)
                             continue;
                         var dependentVar = ve["dataInput"][Math.floor(index / 3)];
-                        usedVars[varStr] = composeVarStr(varStr, "partialXYZ", dependentVar);
-                        modePriority[varStr] = 3;
+                        usedVars[varKey] = composeVarStr(varStr, "partialXYZ", dependentVar);
+                        modePriority[varKey] = 3;
                     } else if (ve["updateMode"] == "full") {
-                        if (modePriority[varStr] >= 4)
+                        if (modePriority[varKey] >= 4)
                             continue;
-                        usedVars[varStr] = composeVarStr(varStr, "full");
-                        modePriority[varStr] = 4;
+                        usedVars[varKey] = composeVarStr(varStr, "full");
+                        modePriority[varKey] = 4;
                     }
                 }
             }
