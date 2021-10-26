@@ -221,7 +221,7 @@
                     let varStr = ve["dataInput"][index];
                     let varKey = "buffer:" + varStr;
                     if (ve["updateMode"] == "single" || ve["updateMode"] == "input") {
-                        if (modePriority[varStr] >= 1)
+                        if (modePriority[varKey] >= 1)
                             continue;
                         usedVars[varKey] = composeVarStr(varStr, "single");
                         modePriority[varKey] = 1;
