@@ -121,12 +121,24 @@
         if (brightMode) {
             //Convert to HSV, to HSL, invert Lightness and convert back to HSL and HSV
             var rgb = stringToRGB(c);
-            if (rgb.r == 0x40 && rgb.g == 0x40 && rgb.b == 0x40)
+            if (rgb.r == 0x20 && rgb.g == 0x20 && rgb.b == 0x20)
                 return "#ffffff";
             var hsv = RGBtoHSV(rgb);
             var l = (2.0 - hsv.s) * hsv.v / 2.0;
             var s = l && l<1 ? hsv.s*hsv.v/(l < 0.5 ? l*2.0 : 2.0 - l*2.0) : 0.0
-            l = 1.0 - l;
+
+            //See Android or iOS source
+            let lum = 0.2126*Math.pow((rgb.r/255.0+0.055)/1.055, 2.4) + 0.7152*Math.pow((rgb.g/255.0+0.055)/1.055, 2.4) + 0.0722*Math.pow((rgb.b/255.0+0.055)/1.055, 2.4);
+            let pivot = 0.21404114; //Math.pow((0.5+0.055)/1.055, 2.4);
+            var gammaL = pivot * (1 - lum) / (1 - pivot);
+            if (gammaL < 0)
+                gammaL = 0.0;
+            l = 1.055 * Math.pow(gammaL, 1.0/2.4) - 0.055;
+            if (l < 0)
+                l = 0;
+            else if (l > 1)
+                l = 1;
+
             var t = s * (l < 0.5 ? l : 1.0-l);
             hsv.v = l+t;
             hsv.s = l > 0 ? 2*t/hsv.v : 0.0;
@@ -140,9 +152,9 @@
         var adjustables = document.getElementsByClassName("adjustableColor");
         for(var i = 0; i < adjustables.length; i++) {
             var adjustable = adjustables[i];
-            if (adjustable.style.color != null)
+            if (adjustable.style.color !== "" && adjustable.style.color !== null)
                 adjustable.style.color = adjustableColor(adjustable.style.color);
-            if (adjustable.style.backgroundColor != null)
+            if (adjustable.style.backgroundColor !== "" && adjustable.style.backgroundColor !== null)
                 adjustable.style.backgroundColor = adjustableColor(adjustable.style.backgroundColor);
         }
     }
