@@ -406,6 +406,18 @@ ul {
     background: #e0e0e0;
 }
 
+.imageElement {
+    text-align: center;
+}
+
+.darkFilter_invert, .brightMode .lightFilter_invert {
+    filter: invert(1);
+}
+
+.brightMode .lightFilter_none, .darkFilter_none {
+    filter: invert(0);
+}
+
 #error {
     z-index: 10000;
     position: absolute;
@@ -453,3 +465,4 @@ ul {
 #exportDialog form input {
     display: inline-block;
 }
+
