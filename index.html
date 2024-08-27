@@ -214,7 +214,7 @@
                     return namePart + "=" + data[partialComponent]["data"][data[partialComponent]["data"].length-1];
                 else {
                     var minLength = Math.min(data[partialComponent]["data"].length, data[name]["data"].length);
-                    return namePart + "=" + data[partialComponent]["data"][minLength-1] + "|" + encodeURIComponent(partialComponent);
+                    return namePart + "=" + encodeURIComponent(data[partialComponent]["data"][minLength-1] + "|" + partialComponent);
                 }
             } else
                 return namePart + "=full";
