@@ -25,7 +25,7 @@
     var data = {};
     var elementData = [];
     var nViews = views.length;
-    var nElements = 1*(views[nViews-1]["elements"][views[nViews-1]["elements"].length-1]["index"])+1;
+    var nElements = 1*(views[nViews - 1].elements[views[nViews - 1].elements.length - 1].index)+1;
 
     var measuring = true;
     var countDown = 0;
@@ -205,65 +205,60 @@
     }
 
     function composeVarStr(name, partial, partialComponent) {
-        var namePart = encodeURIComponent(name);
-        if (partial == "full")
-            return namePart + "=full";
-        if (partial == "partial" || partial == "partialXYZ") {
-            if ((!forceFull) && data.hasOwnProperty(partialComponent) && data[partialComponent]["data"].length > 0 && data.hasOwnProperty(name) && data[name]["data"].length > 0) {
-                if (partialComponent == name)
-                    return namePart + "=" + data[partialComponent]["data"][data[partialComponent]["data"].length-1];
-                else {
-                    var minLength = Math.min(data[partialComponent]["data"].length, data[name]["data"].length);
-                    return namePart + "=" + encodeURIComponent(data[partialComponent]["data"][minLength-1] + "|" + partialComponent);
+        var value; // empty (one sample) by default
+        if (partial == "full") {
+            value = "full";
+        } else if (partial == "partial" || partial == "partialXYZ") {
+            value = "full"; // fallback to full
+            if (!forceFull && data.hasOwnProperty(partialComponent) && data.hasOwnProperty(name)) {
+                var length = Math.min(data[partialComponent].data.length, data[name].data.length);
+                if (length > 0) {
+                    value = data[partialComponent].data[length - 1];
+                    if (partialComponent !== name)
+                        value += encodeURIComponent("|" + partialComponent);
                 }
-            } else
-                return namePart + "=full";
+            }
         }
-        return namePart;
+        return encodeURIComponent(name) + (value ? '=' + value : '');
     }
 
     function updateUsedVarStr() {
-        var usedVars = [];
-        var modePriority = [];
-        views[currentView]["elements"].forEach(function(ve) {
+        var vars = {};
+        var priorities = {};
+        views[currentView].elements.forEach(function(ve) {
             if (ve.hasOwnProperty("dataInput")) {
-                for (var index = 0; index < ve["dataInput"].length; index++) {
-                    if (ve["dataInput"][index] == null)
+                let dataInput = ve.dataInput;
+                let updateMode = ve.updateMode;
+                for (var i = 0; i < dataInput.length; i++) {
+                    if (dataInput[i] == null)
                         continue;
-                    let varStr = ve["dataInput"][index];
-                    let varKey = "buffer:" + varStr;
-                    if (ve["updateMode"] == "single" || ve["updateMode"] == "input") {
-                        if (modePriority[varKey] >= 1)
-                            continue;
-                        usedVars[varKey] = composeVarStr(varStr, "single");
-                        modePriority[varKey] = 1;
-                    } else if (ve["updateMode"] == "partial") {
-                        if (modePriority[varKey] >= 2)
-                            continue;
-                        var dependentVar = ((ve["dataInput"].length > index + 1) && (index % 2 == 0)) ? ve["dataInput"][index+1] : ve["dataInput"][index];
-                        usedVars[varKey] = composeVarStr(varStr, "partial", dependentVar);
-                        modePriority[varKey] = 2;
-                    } else if (ve["updateMode"] == "partialXYZ") {
-                        if (modePriority[varKey] >= 3)
-                            continue;
-                        var dependentVar = ve["dataInput"][Math.floor(index / 3)];
-                        usedVars[varKey] = composeVarStr(varStr, "partialXYZ", dependentVar);
-                        modePriority[varKey] = 3;
-                    } else if (ve["updateMode"] == "full") {
-                        if (modePriority[varKey] >= 4)
-                            continue;
-                        usedVars[varKey] = composeVarStr(varStr, "full");
-                        modePriority[varKey] = 4;
+                    let name = dataInput[i];
+                    let key = "buffer:" + name;
+                    let priority = priorities[key] || 0;
+                    if (priority < 1 && (updateMode == "single" || updateMode == "input")) {
+                        vars[key] = composeVarStr(name, "single");
+                        priorities[key] = 1;
+                    } else if (priority < 2 && updateMode == "partial") {
+                        var dependentVar = ((dataInput.length > i + 1) && (i % 2 == 0)) ? dataInput[i + 1] : dataInput[i];
+                        vars[key] = composeVarStr(name, "partial", dependentVar);
+                        priorities[key] = 2;
+                    } else if (priority < 3 && updateMode == "partialXYZ") {
+                        var dependentVar = dataInput[Math.floor(i / 3)];
+                        vars[key] = composeVarStr(name, "partialXYZ", dependentVar);
+                        priorities[key] = 3;
+                    } else if (priority < 4 && updateMode == "full") {
+                        vars[key] = composeVarStr(name, "full");
+                        priorities[key] = 4;
                     }
                 }
             }
         });
 
         usedVarStr = "";
-        for (var usedVar in usedVars) {
+        for (var v in vars) {
             if (usedVarStr != "")
                 usedVarStr += "&";
-            usedVarStr += usedVars[usedVar];
+            usedVarStr += vars[v];
         }
         forceFull = false;
     }
@@ -280,25 +275,28 @@
     function updateData() {
         updateUsedVarStr();
         ajax("get?" + usedVarStr,
-            function( jsonData ) {
-                for (var index in jsonData["buffer"]) {
-                    if (jsonData["buffer"][index]["updateMode"] == "partial" && data.hasOwnProperty(index) && data[index]["data"].length > 0) {
-                        if (jsonData["buffer"][index]["buffer"].length == 0) {
-                            data[index]["changed"] = false;
+            function(response) {
+                for (var name in response.buffer) {
+                    let buffer = response.buffer[name];
+                    let existing = data[name];
+                    if (buffer.updateMode == "partial" && existing && existing.data.length > 0) {
+                        if (buffer.buffer.length == 0) {
+                            existing.changed = false;
                             continue;
                         }
-                        data[index]["data"] = data[index]["data"].concat(nullToNaN(jsonData["buffer"][index]["buffer"]));
-                        if (jsonData["buffer"][index]["size"] > 0)
-                            data[index]["data"].splice(0, data[index]["data"].length - jsonData["buffer"][index]["size"]);
-                        data[index]["changed"] = true;
+                        existing.data = existing.data.concat(nullToNaN(buffer.buffer));
+                        if (buffer.size > 0)
+                            existing.data.splice(0, existing.data.length - buffer.size);
+                        existing.changed = true;
                     } else {
-                        data[index] = {};
-                        data[index]["data"] = nullToNaN(jsonData["buffer"][index]["buffer"]);
-                        data[index]["changed"] = true;
+                        data[name] = {
+                            data: nullToNaN(buffer.buffer),
+                            changed: true
+                        };
                     }
                 }
                 updateViews();
-                updateMeasuring(jsonData["status"]);
+                updateMeasuring(response.status);
                 errorNode.style.display = "none";
             },
             function() {
@@ -307,10 +305,7 @@
                 forceFull = true;
             },
             function() {
-                if (measuring)
-                    setTimeout(updateData, 30);
-                else
-                    setTimeout(updateData, 250);
+                setTimeout(updateData, measuring ? 30 : 250);
             },
             10000
         );
@@ -327,25 +322,19 @@
         if (fatalStop)
             return;
 
-        if (measuring != s["measuring"])
+        if (measuring != s.measuring)
             forceFull = true;
         if (sessionID == "")
-            sessionID = s["session"];
-        else if (sessionID != s["session"]) {
+            sessionID = s.session;
+        else if (sessionID != s.session) {
             fatalStop = true;
             askSessionReload();
         }
-        measuring = s["measuring"];
-        timedRun = s["timedRun"];
-        countDown = s["countDown"];
-        if (measuring)
-            header.classList.add("active");
-        else
-            header.classList.remove("active");
-        if (countDown != 0)
-            header.classList.add("countdown");
-        else
-            header.classList.remove("countdown");
+        measuring = s.measuring;
+        timedRun = s.timedRun;
+        countDown = s.countDown;
+        header.classList.toggle("active", measuring);
+        header.classList.toggle("countdown", countDown != 0);
         if (countDown != 0) {
             document.getElementById("countdown").textContent = Math.ceil(countDown/1000) + "s";
         } else {
@@ -359,10 +348,10 @@
     }
 
     function updateViews() {
-        views[currentView]["elements"].forEach(function(ve) {
+        views[currentView].elements.forEach(function(ve) {
             if (ve.hasOwnProperty("dataInputFunction"))
-                ve["dataInputFunction"](data);
-            ve["dataCompleteFunction"]();
+                ve.dataInputFunction(data);
+            ve.dataCompleteFunction();
         });
     }
 
@@ -371,8 +360,8 @@
         for (i = 0; i < nElements; i++)
             elementData[i] = {};
 
-        views[currentView]["elements"].forEach(function(ve) {
-            viewsNode.innerHTML += ("<div class=\"elementBlock\">" + ve["html"] + "</div>");
+        views[currentView].elements.forEach(function(ve) {
+            viewsNode.innerHTML += ("<div class=\"elementBlock\">" + ve.html + "</div>");
         });
         adjustColors();
         forceFull = true;
@@ -386,12 +375,8 @@
 
         var liElements = viewSelector.getElementsByTagName("li");
         for (var i = 0; i < liElements.length; i++) {
-            var el = liElements[i];
-            if (i == currentView)
-                el.classList.add("active");
-            else
-                el.classList.remove("active");
-        };
+            liElements[i].classList.toggle("active", i == currentView);
+        }
         recreateViews();
     }
 
@@ -441,9 +426,8 @@
 
         var elements = document.getElementsByClassName("exclusive");
         for (var i = 0; i < elements.length; i++) {
-            var elem = elements[i];
-            elem.classList.remove("exclusive");
-        };
+            elements[i].classList.remove("exclusive");
+        }
     }
 
     function toggleExclusive(i) {
@@ -454,33 +438,27 @@
             setExclusive(i);
     }
 
-    function zoomLarger(e) {
+    function zoom(e, factor) {
         leaveExclusive();
-        if (scaleFactor < 3)
-            scaleFactor *= 1.2;
+        scaleFactor = factor;
         saveSetting("scaleFactor", scaleFactor);
         body.style.fontSize = (100*scaleFactor)+"%";
         e.stopPropagation();
         recreateViews();
+    }
+
+    function zoomLarger(e) {
+        if (scaleFactor < 3)
+            zoom(e, scaleFactor * 1.2);
     }
 
     function zoomSmaller(e) {
-        leaveExclusive();
         if (scaleFactor > 0.5)
-            scaleFactor /= 1.2;
-        saveSetting("scaleFactor", scaleFactor);
-        body.style.fontSize = (100*scaleFactor)+"%";
-        e.stopPropagation();
-        recreateViews();
+            zoom(e, scaleFactor / 1.2);
     }
 
     function zoomDefault(e) {
-        leaveExclusive();
-        scaleFactor = 1.0;
-        saveSetting("scaleFactor", scaleFactor);
-        body.style.fontSize = (100*scaleFactor)+"%";
-        e.stopPropagation();
-        recreateViews();
+        zoom(e, 1.0);
     }
 
     function toggleBrightMode(e) {
