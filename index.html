@@ -252,6 +252,21 @@
                     }
                 }
             }
+            if (ve.hasOwnProperty("visibilityInput")) {
+                let visibilityInput = ve.visibilityInput;
+                let updateMode = ve.visibilityUpdateMode;
+                for (var i = 0; i < visibilityInput.length; i++) {
+                    if (visibilityInput[i] == null)
+                            continue;
+                        let name = visibilityInput[i];
+                        let key = "buffer:" + name;
+                        let priority = priorities[key] || 0;
+                        if (priority < 1 && (updateMode == "single")) {
+                            vars[key] = composeVarStr(name, "single");
+                            priorities[key] = 1;
+                        }
+                }
+            }
         });
 
         usedVarStr = "";
