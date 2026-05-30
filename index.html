@@ -254,19 +254,16 @@
             }
             
             if (ve.hasOwnProperty("visibilityInput")) {
-                    let visibilityInput = ve["visibilityInput"];
-                    let updateMode = ve["visibilityUpdateMode"];
-                    for (var i = 0; i < visibilityInput.length; i++) {
-                        if (visibilityInput[i] == null)
-                                continue;
-                        let varStr = visibilityInput[i];
-                        let varKey = "buffer:" + varStr;
-                        if ((updateMode == "single")) {
-                            usedVars[varKey] = composeVarStr(varStr, "single");
-                            modePriority[varKey] = 1;
-                        }
+                let visibilityInput = ve["visibilityInput"];
+                if (visibilityInput != null) {
+                    let key = "buffer:" + visibilityInput;
+                    let priority = priorities[key] || 0;
+                    if (priority < 1) {
+                        vars[key] = composeVarStr(visibilityInput, "single");
+                        priorities[key] = 1;
                     }
                 }
+            }
         });
 
         usedVarStr = "";
@@ -367,6 +364,15 @@
             if (ve.hasOwnProperty("dataInputFunction"))
                 ve.dataInputFunction(data);
             ve.dataCompleteFunction();
+            
+            if (ve.hasOwnProperty("visibilityInput")) {
+                let visibilityBuffer = data[ve["visibilityInput"]]["data"];
+                let visible = (visibilityBuffer.length > 0) && (visibilityBuffer[visibilityBuffer.length-1] > 0);
+                let element = document.getElementById("element"+ve["index"]);
+                if (!visible && ((element.classList && element.classList.contains("exclusive")) || (element.className.indexOf("exclusive") > -1)))
+                    leaveExclusive();
+                element.style.display = visible ? "block" : "none";
+            }
         });
     }
 
