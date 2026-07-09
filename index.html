@@ -402,10 +402,53 @@
     }
 
     function clearData() {
-        if (confirm("<!-- [[clearConfirmTranslation]] -->")) {
-            ajax("control?cmd=clear");
+        const oldOverlay = document.body.querySelector('.clearOverlay');
+        if (oldOverlay)
+            document.body.removeChild(oldOverlay);
+
+        const overlay = document.createElement('div');
+        var prompt;
+        if (clearGroups.length > 0)
+            prompt = "<!-- [[clearConfirmTranslationSelect]] -->";
+        else
+            prompt = "<!-- [[clearConfirmTranslation]] -->";
+        overlay.className = 'clearOverlay';
+        overlay.innerHTML = `
+          <div class="clearBox">
+            <p>${prompt}</p>
+            <div class="clearGroupList">
+              ${clearGroups.map((item, index) => `
+                <label class="clearGroup">
+                  <input type="checkbox" value="${item}" id="chk-${index}">
+                  <span>${item}</span>
+                </label>
+              `).join('')}
+            </div>
+            <div>
+              <button type="button" id="clearOK"><!-- [[translationOK]] --></button>
+              <button type="button" id="clearCancel"><!-- [[translationCancel]] --></button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#clearCancel').addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+
+        overlay.querySelector('#clearOK').addEventListener('click', () => {
+            const checkboxes = overlay.querySelectorAll('.clearGroupList input[type="checkbox"]:checked');
+            const selectedValues = Array.from(checkboxes).map(cb => cb.value);
+            document.body.removeChild(overlay);
+
+            const params = new URLSearchParams();
+            params.append("cmd", "clear");
+            selectedValues.forEach((value, index) => {
+                params.append(`clearGroup${index + 1}`, value);
+            });
+            ajax("control?"+params.toString());
             forceFull = true;
-        }
+        });
     }
 
     function exportData() {

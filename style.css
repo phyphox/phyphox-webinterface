@@ -466,3 +466,30 @@ ul {
     display: inline-block;
 }
 
+.clearOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.clearBox {
+   background: #404040;
+   padding: 1em;
+   border-radius: 0.5em;
+   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+   min-width: 10em;
+   max-width: 20em;
+   width: 90%;
+ }
+
+.clearBox .clearGroup {
+    display: block;
+}
