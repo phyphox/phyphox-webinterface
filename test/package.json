@@ -1,0 +1,14 @@
+{
+  "name": "phyphox-webinterface-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser tests for the phyphox remote web interface, against the mock server or a running app",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 webinterface.test.js",
+    "mock": "node mock_server.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}

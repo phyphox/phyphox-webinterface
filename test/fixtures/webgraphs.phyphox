@@ -1,0 +1,77 @@
+<phyphox xmlns="http://phyphox.org/xml" version="1.21">
+    <title>Web graph test</title>
+    <category>Test</category>
+    <description>Exercises the remote interface graphs.</description>
+    <data-containers>
+        <container size="0">accX</container>
+        <container size="0">accY</container>
+        <container size="0">accZ</container>
+        <container size="0">acc_time</container>
+        <container size="0">acc</container>
+        <container size="200">hist</container>
+        <container size="200">histX</container>
+        <container size="1">pickedX</container>
+        <container size="1">assigned</container>
+        <container size="1">pickedY</container>
+        <container size="0">idx</container>
+    </data-containers>
+    <input>
+        <sensor type="accelerometer" rate="50">
+            <output component="x">accX</output>
+            <output component="y">accY</output>
+            <output component="z">accZ</output>
+            <output component="t">acc_time</output>
+        </sensor>
+    </input>
+    <analysis>
+        <power>
+            <input as="base" clear="false">accX</input>
+            <input as="exponent" type="value">2</input>
+            <output as="power">acc</output>
+        </power>
+    </analysis>
+    <views>
+        <view label="Graphs">
+            <graph label="Acceleration (partial, 3 datasets)" labelX="t" unitX="s" labelY="a" unitY="m/s²" unitYperX="m/s³" partialUpdate="true">
+                <input axis="x">acc_time</input>
+                <input axis="y">accX</input>
+                <input axis="x" color="green">acc_time</input>
+                <input axis="y">accY</input>
+                <input axis="x" color="blue" style="dots">acc_time</input>
+                <input axis="y">accZ</input>
+            </graph>
+            <graph label="Follow x (5 s)" labelX="t" unitX="s" labelY="a" unitY="m/s²" partialUpdate="true" followX="true" minX="0" maxX="5" scaleMinY="fixed" minY="-15" scaleMaxY="fixed" maxY="15" lineWidth="2">
+                <input axis="x">acc_time</input>
+                <input axis="y">accX</input>
+            </graph>
+            <graph label="Picker (dots)" labelX="t" unitX="s" labelY="a²" unitY="m²/s⁴" style="dots" partialUpdate="true" pickLabel="Calibrate">
+                <input axis="x">acc_time</input>
+                <input axis="y">acc</input>
+                <output axis="x" label="Calibration point">pickedX</output>
+                <output axis="xcal" label="Assigned wavelength in nm">assigned</output>
+                <output axis="y" label="Pick y">pickedY</output>
+            </graph>
+            <value label="Picked x" size="1" precision="3" unit="s">
+                <input>pickedX</input>
+            </value>
+            <value label="Assigned" size="1" precision="1" unit="nm">
+                <input>assigned</input>
+            </value>
+            <value label="Picked y" size="1" precision="3">
+                <input>pickedY</input>
+            </value>
+        </view>
+        <view label="Second">
+            <graph label="Log y" labelX="t" unitX="s" labelY="a²" unitY="m²/s⁴" logY="true" partialUpdate="true">
+                <input axis="x">acc_time</input>
+                <input axis="y">acc</input>
+            </graph>
+        </view>
+    </views>
+    <export>
+        <set name="Data">
+            <data name="t">acc_time</data>
+            <data name="x">accX</data>
+        </set>
+    </export>
+</phyphox>
