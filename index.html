@@ -909,6 +909,7 @@
                 linearFit: false,
                 fitResult: null,
                 picks: [], //up to two {datasetIndex, index, x, y, z}
+                preview: null, //nearest point under the mouse in pick mode
                 pendingCal: null, //pick output waiting for a user value
                 status: "noData",
                 nearest: null,
@@ -1280,8 +1281,8 @@
                 showLine: style != "dots" && style != "map",
                 fill: bars ? "origin" : false,
                 pointRadius: style == "dots" ? 2.0 * lw * scaleFactor : 0,
-                pointHitRadius: 4.0 * lw * scaleFactor,
-                pointHoverRadius: style == "map" ? 0 : 4.0 * lw * scaleFactor,
+                pointHitRadius: 0,
+                pointHoverRadius: 0,
                 tension: 0,
                 borderCapStyle: "butt",
                 borderJoinStyle: "round",
@@ -1372,44 +1373,6 @@
             updateChart(g);
         }
 
-        //Nearest point along x for ordinary plots: Chart.js only refreshes the point elements inside
-        //the visible x range of a sorted dataset, so a hit test must not stray outside it. Maps are
-        //not sorted along x and need the nearest point in both directions.
-        function interactionOptions(g) {
-            return {mode: "nearest", axis: g.isMap ? "xy" : "x", intersect: false};
-        }
-
-        function tooltipOptions(g) {
-            var cfg = g.cfg;
-            var ia = interactionOptions(g);
-            return {
-                enabled: true,
-                displayColors: false,
-                titleFont: {size: 15 * scaleFactor},
-                bodyFont: {size: 15 * scaleFactor},
-                mode: ia.mode,
-                axis: ia.axis,
-                intersect: ia.intersect,
-                filter: function(item) {
-                    return item.dataset.phyphoxStyle != "fit";
-                },
-                callbacks: {
-                    title: function() { return ""; },
-                    label: function(item) {
-                        var p = item.raw;
-                        if (!p)
-                            return "";
-                        var lines = [];
-                        lines.push(withUnit(formatValue(p.x, cfg.xPrecision), cfg.unitX));
-                        lines.push(withUnit(formatValue(p.y, cfg.yPrecision), cfg.unitY));
-                        if (g.isMap && p.hasOwnProperty("z"))
-                            lines.push(withUnit(formatValue(p.z, cfg.zPrecision), cfg.unitZ));
-                        return lines;
-                    }
-                }
-            };
-        }
-
         function createChart(g) {
             var el = element(g);
             if (!el)
@@ -1418,6 +1381,8 @@
             var cfg = g.cfg;
             var datasets = cfg.datasets.map(function(ds, i) { return datasetOptions(g, ds, i); });
             datasets.push(fitDatasetOptions(g));
+            //Chart.js gets no pointer events at all: hover highlights and tooltips are off, the data
+            //picker below reads the pointer itself and the zoom plugin has its own listeners
             var chart = new Chart(canvas, {
                 type: "scatter",
                 data: {datasets: datasets},
@@ -1425,13 +1390,11 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     animation: false,
-                    events: ["mousemove", "mouseout", "click", "touchstart", "touchmove"],
-                    interaction: interactionOptions(g),
+                    events: [],
                     layout: {padding: {right: (g.isMap && cfg.showColorScale !== false) ? 70 * scaleFactor : 0}},
-                    onClick: function(event, elements, chart) { onChartClick(g, chart, event); },
                     plugins: {
                         legend: {display: false},
-                        tooltip: tooltipOptions(g),
+                        tooltip: {enabled: false},
                         zoom: zoomOptions(g),
                         phyphox: {graph: g}
                     },
@@ -1441,6 +1404,7 @@
                     }
                 }
             });
+            attachPicker(g, canvas);
             return chart;
         }
 
@@ -1599,18 +1563,15 @@
             var chart = g.chart;
             var picking = g.interactive && g.mode == "pick";
             chart.options.plugins.zoom = zoomOptions(g);
-            chart.options.plugins.tooltip.enabled = !picking;
-            //While picking, the chart only sees clicks: the picker does its own nearest-point search
-            chart.options.events = picking ? ["click", "mouseout"] : ["mousemove", "mouseout", "click", "touchstart", "touchmove"];
-            chart.setActiveElements([]);
             var canvas = chart.canvas;
-            if (g.interactive && g.mode == "pick")
-                canvas.style.cursor = "crosshair";
-            else if (g.interactive)
-                canvas.style.cursor = "move";
-            else
-                canvas.style.cursor = "";
+            canvas.style.cursor = picking ? "crosshair" : (g.interactive ? "move" : "");
+            g.preview = null;
             chart.update("none");
+            //A finger dragging between two points must not scroll or navigate the page. Set after the
+            //update: the zoom plugin restarts Hammer.js in it, which writes touch-action itself and
+            //keeps it at "none" while pinch and pan are enabled, so it is only overridden for picking.
+            if (picking)
+                canvas.style.touchAction = "none";
         }
 
         function tool(index, toolName, event) {
@@ -1726,38 +1687,137 @@
             return best;
         }
 
-        function onChartClick(g, chart, event) {
-            if (!g.interactive || g.mode != "pick")
-                return;
-            var pos = Chart.helpers.getRelativePosition(event, chart);
-            //A click on a marker removes that pick; a click far from any point clears the selection;
-            //otherwise the nearest point is added, and after two points the next click starts over
-            var xs = chart.scales.x, ys = chart.scales.y;
+        function isPicking(g) {
+            return g.interactive && g.mode == "pick" && g.chart;
+        }
+
+        function samePoint(a, b) {
+            return a && b && a.datasetIndex == b.datasetIndex && a.index == b.index;
+        }
+
+        function canvasPosition(chart, e) {
+            var r = chart.canvas.getBoundingClientRect();
+            return {x: e.clientX - r.left, y: e.clientY - r.top};
+        }
+
+        function pickAt(g, pos) {
+            var p = nearestPointOnScreen(g.chart, pos);
+            return (p && p.distance <= 40 * scaleFactor) ? p : null;
+        }
+
+        function markerAt(g, pos) {
+            var xs = g.chart.scales.x, ys = g.chart.scales.y;
             for (var i = 0; i < g.picks.length; i++) {
-                var mdx = xs.getPixelForValue(g.picks[i].x) - pos.x;
-                var mdy = ys.getPixelForValue(g.picks[i].y) - pos.y;
-                if (Math.sqrt(mdx * mdx + mdy * mdy) < 14 * scaleFactor) {
-                    g.picks.splice(i, 1);
-                    g.pendingCal = null;
-                    chart.update("none");
-                    updateInfo(g);
+                var dx = xs.getPixelForValue(g.picks[i].x) - pos.x;
+                var dy = ys.getPixelForValue(g.picks[i].y) - pos.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 14 * scaleFactor)
+                    return i;
+            }
+            return -1;
+        }
+
+        function setPicks(g, picks) {
+            g.picks = picks;
+            g.pendingCal = null;
+            g.chart.update("none");
+            updateInfo(g);
+        }
+
+        //The data picker, like in the app: a tap or click selects the point nearest to it on screen,
+        //one in empty space deselects, and dragging from a point to another spans the two for the
+        //difference and slope read-out. With a mouse the nearest point is previewed while hovering.
+        function attachPicker(g, canvas) {
+            var drag = null;
+            var previewPending = false;
+
+            function schedulePreview(pos) {
+                g.preview = pickAt(g, pos);
+                if (previewPending)
+                    return;
+                previewPending = true;
+                requestAnimationFrame(function() {
+                    previewPending = false;
+                    if (g.chart)
+                        g.chart.draw();
+                });
+            }
+
+            canvas.addEventListener("pointerdown", function(e) {
+                if (!isPicking(g) || (e.pointerType == "mouse" && e.button !== 0))
+                    return;
+                drag = {id: e.pointerId, start: canvasPosition(g.chart, e), moved: false, first: null};
+                try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+                e.preventDefault();
+            });
+
+            canvas.addEventListener("pointermove", function(e) {
+                if (!isPicking(g))
+                    return;
+                var pos = canvasPosition(g.chart, e);
+                if (drag && drag.id == e.pointerId) {
+                    if (!drag.moved) {
+                        var ddx = pos.x - drag.start.x, ddy = pos.y - drag.start.y;
+                        if (Math.sqrt(ddx * ddx + ddy * ddy) < 6 * scaleFactor)
+                            return;
+                        drag.moved = true;
+                        //A drag that does not start at a point does nothing
+                        drag.first = pickAt(g, drag.start);
+                        if (!drag.first)
+                            return;
+                    }
+                    if (!drag.first)
+                        return;
+                    drag.last = pos;
+                    var second = pickAt(g, pos);
+                    g.preview = null;
+                    setPicks(g, second && !samePoint(second, drag.first) ? [drag.first, second] : [drag.first]);
+                } else if (!drag && e.pointerType == "mouse") {
+                    schedulePreview(pos);
+                }
+            });
+
+            function endDrag(e) {
+                if (!drag || drag.id != e.pointerId)
+                    return;
+                var d = drag;
+                drag = null;
+                //The release event's position is not reliable for touch, so the press position
+                //stands for a tap and the last move position for a drag
+                if (d.moved) {
+                    if (d.first && d.last) {
+                        var last = pickAt(g, d.last);
+                        setPicks(g, last && !samePoint(last, d.first) ? [d.first, last] : [d.first]);
+                    }
                     return;
                 }
+                var pos = d.start;
+                //A tap or click: remove the marker under it, else select the nearest point, else deselect
+                var m = markerAt(g, pos);
+                if (m >= 0) {
+                    var picks = g.picks.slice();
+                    picks.splice(m, 1);
+                    setPicks(g, picks);
+                    return;
+                }
+                var p = pickAt(g, pos);
+                setPicks(g, p ? [p] : []);
             }
-            var pick = nearestPointOnScreen(chart, pos);
-            if (!pick || pick.distance > 40 * scaleFactor) {
-                g.picks = [];
-                g.pendingCal = null;
-                chart.update("none");
-                updateInfo(g);
-                return;
-            }
-            if (g.picks.length >= 2)
-                g.picks = [];
-            g.picks.push(pick);
-            g.pendingCal = null;
-            chart.update("none");
-            updateInfo(g);
+
+            canvas.addEventListener("pointerup", function(e) {
+                if (!isPicking(g)) {
+                    drag = null;
+                    return;
+                }
+                endDrag(e);
+            });
+            canvas.addEventListener("pointercancel", function() { drag = null; });
+            canvas.addEventListener("pointerleave", function() {
+                if (g.preview) {
+                    g.preview = null;
+                    if (g.chart)
+                        g.chart.draw();
+                }
+            });
         }
 
         //Info box: picked points, their difference and slope, the fit result and the pick outputs
@@ -1829,17 +1889,28 @@
                 return;
             }
             var chart = g.chart;
+            var xs = chart.scales.x, ys = chart.scales.y;
             var last = g.picks[g.picks.length - 1];
-            var px = chart.scales.x.getPixelForValue(last.x);
-            var py = chart.scales.y.getPixelForValue(last.y);
+            var px = xs.getPixelForValue(last.x);
+            var py = ys.getPixelForValue(last.y);
             var area = chart.chartArea;
             var w = box.offsetWidth, h = box.offsetHeight;
             var gap = 16 * scaleFactor;
-            var left = px + gap;
-            if (left + w > area.right)
-                left = px - gap - w;
-            if (left < area.left)
-                left = area.left;
+            var others = g.picks.slice(0, -1).map(function(p) { return {x: xs.getPixelForValue(p.x), y: ys.getPixelForValue(p.y)}; });
+            //Right of the point, or left if that fits better or keeps the other marker visible
+            var candidates = [px + gap, px - gap - w];
+            var left = null;
+            for (var i = 0; i < candidates.length && left === null; i++) {
+                var l = candidates[i];
+                if (l < area.left || l + w > area.right)
+                    continue;
+                var t0 = Math.min(Math.max(py - h / 2, area.top), area.bottom - h);
+                var covers = others.some(function(o) { return o.x > l - gap && o.x < l + w + gap && o.y > t0 - gap && o.y < t0 + h + gap; });
+                if (!covers)
+                    left = l;
+            }
+            if (left === null)
+                left = candidates[0] + w <= area.right ? candidates[0] : Math.max(area.left, candidates[1]);
             var top = py - h / 2;
             if (top + h > area.bottom)
                 top = area.bottom - h;
@@ -2110,7 +2181,7 @@
         }
 
         function drawPicks(chart, g) {
-            if (!g.interactive || g.picks.length == 0)
+            if (!g.interactive || (g.picks.length == 0 && !g.preview))
                 return;
             var ctx = chart.ctx;
             var xs = chart.scales.x, ys = chart.scales.y;
@@ -2121,6 +2192,30 @@
             ctx.clip();
             var color = frameColor();
             var r = 6 * scaleFactor;
+            if (g.preview && g.mode == "pick" && !g.picks.some(function(p) { return samePoint(p, g.preview); })) {
+                //Hover preview: a faint marker and the point's values next to it
+                var px = xs.getPixelForValue(g.preview.x), py = ys.getPixelForValue(g.preview.y);
+                ctx.globalAlpha = 0.6;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.5 * scaleFactor;
+                ctx.beginPath();
+                ctx.arc(px, py, r, 0, 2 * Math.PI);
+                ctx.stroke();
+                var text = withUnit(formatValue(g.preview.x, g.cfg.xPrecision), g.cfg.unitX) + ", " + withUnit(formatValue(g.preview.y, g.cfg.yPrecision), g.cfg.unitY);
+                ctx.font = (12 * scaleFactor) + "px sans-serif";
+                ctx.textBaseline = "middle";
+                var tw = ctx.measureText(text).width;
+                var tx = px + 12 * scaleFactor;
+                if (tx + tw + 6 * scaleFactor > area.right)
+                    tx = px - 12 * scaleFactor - tw;
+                ctx.globalAlpha = 0.85;
+                ctx.fillStyle = overlayBackground();
+                ctx.fillRect(tx - 3 * scaleFactor, py - 9 * scaleFactor, tw + 6 * scaleFactor, 18 * scaleFactor);
+                ctx.fillStyle = color;
+                ctx.textAlign = "left";
+                ctx.fillText(text, tx, py);
+                ctx.globalAlpha = 1;
+            }
             var pts = g.picks.map(function(p) { return {x: xs.getPixelForValue(p.x), y: ys.getPixelForValue(p.y)}; });
             ctx.strokeStyle = color;
             ctx.lineWidth = 1.5 * scaleFactor;
@@ -2221,6 +2316,7 @@
                 logY: g.logY,
                 userRange: g.userRange,
                 picks: g.picks.map(function(p) { return {datasetIndex: p.datasetIndex, index: p.index, x: p.x, y: p.y}; }),
+                preview: g.preview ? {datasetIndex: g.preview.datasetIndex, index: g.preview.index} : null,
                 fit: g.fitResult,
                 pointCounts: g.chart ? g.chart.data.datasets.map(function(d) { return d.data.length; }) : null
             };

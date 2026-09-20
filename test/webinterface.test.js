@@ -281,10 +281,12 @@ test('followX: the configured window sits at the newest data from the first fram
   assert.equal(await page.$eval(sel(idx, '.graphTool_follow'), b => b.classList.contains('active')), true);
 });
 
-test('picker: nearest point on screen, difference and slope, far click clears, third pick restarts, clear button', async t => {
+test('picker: click selects the nearest point on screen, hover previews, drag spans two points, empty space deselects', async t => {
   const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
   if (idx === null) return;
   await startMeasuring(2);
+  await api('control?cmd=stop'); // static data: points stay where they are while picking
+  await sleep(500);
   await maximize(idx);
   await page.click(sel(idx, '.graphTool_pick'));
   await sleep(300);
@@ -299,46 +301,55 @@ test('picker: nearest point on screen, difference and slope, far click clears, t
   assert.equal(s.picks.length, 1);
   assert.equal(s.picks[0].datasetIndex, 1, 'nearest on screen');
   assert.match(await info(idx), /Point: /);
-  const box = await page.$eval(sel(idx, '.graphInfo'), b => ({left: parseFloat(b.style.left), top: parseFloat(b.style.top), h: b.offsetHeight}));
+  assert.doesNotMatch(await info(idx), /Difference/);
+  const box = await page.$eval(sel(idx, '.graphInfo'), b => ({top: parseFloat(b.style.top), h: b.offsetHeight}));
   const canvasTop = await page.$eval(sel(idx, 'canvas'), c => c.getBoundingClientRect().top);
   assert.ok(Math.abs(box.top + box.h / 2 + canvasTop - p1.y) < box.h, 'info box next to the picked point');
 
+  // hovering previews the nearest point without changing the selection
   const i2 = await pointAwayFrom(idx, 1, i1, 80);
   assert.notEqual(i2, null, 'a second point far enough away on screen');
   const p2 = await pointPos(idx, 1, i2);
-  await page.mouse.click(p2.x, p2.y);
-  await sleep(400);
+  await page.mouse.move(p2.x + 2, p2.y - 2);
+  await sleep(300);
   s = await state(idx);
-  assert.equal(s.picks.length, 2);
+  assert.deepEqual(s.preview, {datasetIndex: 1, index: i2}, 'preview of the point under the mouse');
+  assert.equal(s.picks.length, 1, 'hover does not pick');
+
+  // dragging from the picked point to another spans the two
+  await drag(p1.x, p1.y, p2.x, p2.y);
+  s = await state(idx);
+  assert.equal(s.picks.length, 2, 'drag selected a second point');
+  assert.equal(s.picks[1].index, i2);
   const text = await info(idx);
   assert.match(text, /Difference: /);
   assert.match(text, /Slope: .*m\/s³/, 'slope with unitYperX');
   await shot('pick');
 
-  const i3 = await pointAwayFrom(idx, 1, i2, 80);
-  const p3 = await pointPos(idx, 1, i3 === i1 ? await pointAwayFrom(idx, 1, i1, 160) : i3);
-  await page.mouse.click(p3.x, p3.y);
-  await sleep(400);
-  assert.equal((await state(idx)).picks.length, 1, 'third pick starts over');
+  // a click in empty space deselects
+  const far = await farPosition(idx);
+  assert.ok(far.distance > 40, `found a spot ${far.distance.toFixed(0)} px away from all points`);
+  await page.mouse.click(far.x, far.y);
+  await sleep(300);
+  assert.equal((await state(idx)).picks.length, 0, 'a click far from the data deselects');
 
+  // a click on a marker removes it, the clear button clears
+  await page.mouse.click(p2.x, p2.y);
+  await sleep(300);
+  assert.equal((await state(idx)).picks.length, 1);
   const marker = await markerPos(idx);
   await page.mouse.click(marker.x, marker.y);
-  await sleep(400);
+  await sleep(300);
   assert.equal((await state(idx)).picks.length, 0, 'clicking the marker of the picked point removes it');
-
-  await page.mouse.click(p3.x, p3.y);
+  await page.mouse.click(p2.x, p2.y);
   await sleep(300);
   await page.click(sel(idx, '.pickClear'));
   await sleep(300);
   assert.equal((await state(idx)).picks.length, 0, 'clear button');
 
-  await page.mouse.click(p3.x, p3.y);
-  await sleep(300);
-  const far = await farPosition(idx);
-  assert.ok(far.distance > 40, `found a spot ${far.distance.toFixed(0)} px away from all points`);
-  await page.mouse.click(far.x, far.y);
-  await sleep(300);
-  assert.equal((await state(idx)).picks.length, 0, 'a click far from the data clears');
+  // a drag that starts in empty space selects nothing
+  await drag(far.x, far.y, p2.x, p2.y);
+  assert.equal((await state(idx)).picks.length, 0, 'drag from empty space');
   assertNoErrors();
 });
 
@@ -346,6 +357,8 @@ test('picker outputs write the picked and the assigned value into the buffers', 
   const idx = await requireGraph(t, 'Picker (dots)');
   if (idx === null) return;
   await startMeasuring(2);
+  await api('control?cmd=stop'); // static data: the info box and its buttons stay put
+  await sleep(500);
   await maximize(idx);
   await page.click(sel(idx, '.graphTool_pick'));
   await sleep(300);
@@ -394,6 +407,8 @@ test('touch: pinch zooms, one finger pans, a tap picks', async t => {
   await sleep(500);
   const pinched = await scales(idx);
   assert.ok(width(pinched.x) < width(before.x) * 0.8, 'pinch zoomed in');
+  assert.equal(await page.evaluate(() => window.visualViewport.scale), 1, 'the pinch went to the chart, not to the page');
+  assert.equal(await page.$eval(sel(idx, 'canvas'), c => getComputedStyle(c).touchAction), 'none', 'touch-action none while zooming');
 
   await touch('touchStart', [{x: 700, y: 450, id: 1}]);
   for (let i = 1; i <= 10; i++) { await touch('touchMove', [{x: 700 - i * 20, y: 450, id: 1}]); await sleep(20); }
@@ -402,6 +417,8 @@ test('touch: pinch zooms, one finger pans, a tap picks', async t => {
   const panned = await scales(idx);
   assert.ok(panned.x[0] > pinched.x[0] && Math.abs(width(panned.x) - width(pinched.x)) < width(pinched.x) * 0.02, 'panned');
 
+  await api('control?cmd=stop'); // static data while picking
+  await sleep(500);
   await page.click(sel(idx, '.graphTool_pick'));
   await sleep(300);
   const i = await visiblePoint(idx, 0);
@@ -409,12 +426,23 @@ test('touch: pinch zooms, one finger pans, a tap picks', async t => {
   await touch('touchStart', [{x: p.x, y: p.y, id: 1}]);
   await touch('touchEnd', []);
   await sleep(400);
-  if ((await state(idx)).picks.length === 0) { // the plugin swallows the first click after a pan
-    await touch('touchStart', [{x: p.x, y: p.y, id: 1}]);
-    await touch('touchEnd', []);
-    await sleep(400);
-  }
   assert.equal((await state(idx)).picks.length, 1, 'tap picked a point');
+  // a finger dragged from the point to another spans the two
+  const j = await pointAwayFrom(idx, 0, i, 80);
+  const q = await pointPos(idx, 0, j);
+  await touch('touchStart', [{x: p.x, y: p.y, id: 1}]);
+  for (let k = 1; k <= 8; k++) { await touch('touchMove', [{x: p.x + (q.x - p.x) * k / 8, y: p.y + (q.y - p.y) * k / 8, id: 1}]); await sleep(20); }
+  await touch('touchEnd', []);
+  await sleep(400);
+  const s = await state(idx);
+  assert.equal(s.picks.length, 2, 'touch drag selected a second point');
+  assert.equal(s.picks[1].index, j);
+  // a tap in empty space deselects
+  const far = await farPosition(idx);
+  await touch('touchStart', [{x: far.x, y: far.y, id: 1}]);
+  await touch('touchEnd', []);
+  await sleep(400);
+  assert.equal((await state(idx)).picks.length, 0, 'tap in empty space deselects');
   assertNoErrors();
 });
 
