@@ -206,7 +206,7 @@ test('a partial-update graph keeps growing while measuring', async t => {
   assertNoErrors();
 });
 
-test('mouse: drag zooms into a box, wheel zooms, shift+drag pans, a flat drag keeps the y range, reset restores', async t => {
+test('mouse: drag pans, shift+drag zooms into a box, wheel zooms, a flat shift+drag keeps the y range, reset restores', async t => {
   const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
   if (idx === null) return;
   await startMeasuring(2);
@@ -214,7 +214,7 @@ test('mouse: drag zooms into a box, wheel zooms, shift+drag pans, a flat drag ke
   const initial = await scales(idx);
   assert.equal(await page.$eval(sel(idx, '.graphTool_reset'), b => b.disabled), true, 'reset disabled before any zoom');
 
-  await drag(400, 300, 800, 600);
+  await drag(400, 300, 800, 600, 'Shift');
   const zoomed = await scales(idx);
   assert.ok(width(zoomed.x) < width(initial.x) * 0.5 && width(zoomed.y) < width(initial.y) * 0.8, 'box zoom narrowed both axes');
   assert.ok(zoomed.x[0] > initial.x[0] && zoomed.x[1] < initial.x[1], 'inside the initial range');
@@ -226,14 +226,14 @@ test('mouse: drag zooms into a box, wheel zooms, shift+drag pans, a flat drag ke
   const wheeled = await scales(idx);
   assert.ok(width(wheeled.x) < width(zoomed.x), 'wheel zoomed in further');
 
-  await drag(600, 450, 400, 450, 'Shift');
+  await drag(600, 450, 400, 450);
   const panned = await scales(idx);
-  assert.ok(Math.abs(width(panned.x) - width(wheeled.x)) < width(wheeled.x) * 0.01, 'pan keeps the width');
+  assert.ok(Math.abs(width(panned.x) - width(wheeled.x)) < width(wheeled.x) * 0.01, 'a plain drag pans and keeps the width');
   assert.ok(panned.x[0] > wheeled.x[0], 'panned towards larger x');
 
-  await drag(500, 450, 800, 450);
+  await drag(500, 450, 800, 450, 'Shift');
   const flat = await scales(idx);
-  assert.ok(width(flat.y) > 0 && Math.abs(width(flat.y) - width(panned.y)) < 1e-9, 'a flat drag does not collapse the y axis');
+  assert.ok(width(flat.y) > 0 && Math.abs(width(flat.y) - width(panned.y)) < 1e-9, 'a flat zoom box does not collapse the y axis');
   await shot('zoom');
 
   await page.click(sel(idx, '.graphTool_reset'));
@@ -310,11 +310,21 @@ test('picker: click selects the nearest point on screen, hover previews, drag sp
   const i2 = await pointAwayFrom(idx, 1, i1, 80);
   assert.notEqual(i2, null, 'a second point far enough away on screen');
   const p2 = await pointPos(idx, 1, i2);
+  const painted = async () => page.evaluate((idx, x, y) => {
+    const c = Chart.getChart(document.querySelector('#element' + idx + ' canvas'));
+    const r = c.canvas.getBoundingClientRect();
+    const d = c.ctx.getImageData(Math.round((x - r.left - 10) * window.devicePixelRatio), Math.round((y - r.top - 10) * window.devicePixelRatio), Math.round(20 * window.devicePixelRatio), Math.round(20 * window.devicePixelRatio)).data;
+    let sum = 0;
+    for (let k = 0; k < d.length; k += 4) sum += d[k] + d[k + 1] + d[k + 2];
+    return sum;
+  }, idx, p2.x, p2.y);
+  const before = await painted();
   await page.mouse.move(p2.x + 2, p2.y - 2);
   await sleep(300);
   s = await state(idx);
   assert.deepEqual(s.preview, {datasetIndex: 1, index: i2}, 'preview of the point under the mouse');
   assert.equal(s.picks.length, 1, 'hover does not pick');
+  assert.ok(await painted() > before * 1.2, 'the preview marker is painted around the point');
 
   // dragging from the picked point to another spans the two
   await drag(p1.x, p1.y, p2.x, p2.y);
@@ -446,20 +456,6 @@ test('touch: pinch zooms, one finger pans, a tap picks', async t => {
   assertNoErrors();
 });
 
-test('linear fit over the visible points', async t => {
-  const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
-  if (idx === null) return;
-  await startMeasuring(2);
-  await maximize(idx);
-  await page.click(sel(idx, '.graphTool_fit'));
-  await sleep(500);
-  const s = await state(idx);
-  assert.ok(s.fit && isFinite(s.fit.a) && isFinite(s.fit.b) && s.fit.n > 10, 'fit result');
-  assert.match(await info(idx), /a = .*m\/s³/);
-  assert.ok(s.pointCounts[s.pointCounts.length - 1] === 2, 'fit line dataset has two points');
-  assertNoErrors();
-});
-
 test('logarithmic axis from the experiment can be switched to linear and back', async t => {
   await page.click('#viewSelector li:nth-child(2)');
   await sleep(800);
@@ -548,12 +544,19 @@ test('color map: image, color scale and zoom', async t => {
   assertNoErrors();
 });
 
-test('system time axis labels ticks as clock time and follows starts and pauses', async t => {
+test('system time axis labels ticks as clock time, also after a reload while paused', async t => {
   const idx = await requireGraph(t, 'System time axis');
   if (idx === null) return;
   await startMeasuring(1.5);
-  const labels = await page.evaluate(i => Chart.getChart(document.querySelector('#element' + i + ' canvas')).scales.x.ticks.map(t => t.label), idx);
+  const tickLabels = () => page.evaluate(i => Chart.getChart(document.querySelector('#element' + i + ' canvas')).scales.x.ticks.map(t => t.label), idx);
+  let labels = await tickLabels();
   assert.ok(labels.length > 1 && labels.every(l => /\d{1,2}:\d{2}/.test(l)), `clock labels: ${labels.join(' | ')}`);
+  await api('control?cmd=stop');
+  await sleep(300);
+  await page.reload({waitUntil: 'load'});
+  await sleep(1500);
+  labels = await tickLabels();
+  assert.ok(labels.length > 1 && labels.every(l => /\d{1,2}:\d{2}/.test(l)), `clock labels after a reload while paused: ${labels.join(' | ')}`);
   const title = await page.evaluate(i => Chart.getChart(document.querySelector('#element' + i + ' canvas')).options.scales.x.title.text, idx);
   assert.match(title, /UTC/);
 });

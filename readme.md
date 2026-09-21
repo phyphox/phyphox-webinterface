@@ -115,7 +115,7 @@ All keys are always present (use `null` for "not set"), booleans are booleans, n
 | `aspectRatio` | number | Width divided by height of the plot element |
 | `labelX`, `labelY`, `labelZ` | string or null | Axis labels |
 | `unitX`, `unitY`, `unitZ` | string or null | Axis units |
-| `unitYX` | string or null | Unit of a slope (y per x), used for the two-point slope and the linear fit |
+| `unitYX` | string or null | Unit of a slope (y per x), used for the two-point slope read-out |
 | `logX`, `logY`, `logZ` | boolean | Logarithmic axes; log x/y can be toggled by the user when set |
 | `xPrecision`, `yPrecision`, `zPrecision` | integer | Digits for axis labels and values, -1 = automatic |
 | `suppressScientificNotation` | boolean | Never use scientific notation on the axes |
@@ -139,8 +139,8 @@ Colors are the experiment's colors as given; the interface adapts them to its br
 ### Graph strings
 
 The keys of the `graphStrings` object (the interface has English defaults for all of them):
-`panAndZoom`, `pick`, `resetZoom`, `follow`, `linearFit`, `logX`, `logY`, `systemTime`, `point`,
-`difference`, `slope`, `fit`, `noData`, `noValidData`, `noDataInRange`, `ok`, `cancel`,
+`panAndZoom`, `pick`, `resetZoom`, `follow`, `logX`, `logY`, `systemTime`, `point`,
+`difference`, `slope`, `noData`, `noValidData`, `noDataInRange`, `ok`, `cancel`,
 `invalidValue`, `zoomHint`, `colorMapWarning`.
 
 ## Tests

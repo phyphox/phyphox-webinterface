@@ -70,21 +70,19 @@
         pick: "Pick data",
         resetZoom: "Reset zoom",
         follow: "Follow new data",
-        linearFit: "Linear fit",
         logX: "Logarithmic x axis",
         logY: "Logarithmic y axis",
         systemTime: "Convert to system time",
         point: "Point",
         difference: "Difference",
         slope: "Slope",
-        fit: "Linear fit: y = a x + b",
         noData: "No data",
         noValidData: "No valid data",
         noDataInRange: "No data in range",
         ok: "OK",
         cancel: "Cancel",
         invalidValue: "Invalid value",
-        zoomHint: "Mouse: drag to zoom into a region, hold shift to pan, wheel to zoom. Touch: pinch to zoom, drag to pan.",
+        zoomHint: "Mouse: drag to pan, hold shift and drag to zoom into a region, wheel to zoom. Touch: pinch to zoom, drag to pan.",
         colorMapWarning: "The color plot in the remote interface is only an approximation. In contrast to the in-app plot, at the moment it cannot handle non-equidistant data or logarithmic scaling on the x and y axis. So, data at varying intervals may appear at the wrong location."
     };
     <!-- [[graphStrings]] -->
@@ -864,8 +862,15 @@
                 return;
             timeEventsRequested = true;
             ajax("time", function(response) {
-                if (Array.isArray(response))
-                    timeEvents = response;
+                if (!Array.isArray(response))
+                    return;
+                timeEvents = response;
+                //Nothing else redraws a paused experiment, so refresh the axes that show a clock
+                for (var i in graphs) {
+                    var g = graphs[i];
+                    if (g.systemTime && g.chart)
+                        g.chart.update("none");
+                }
             }, null, null, 5000);
         }
 
@@ -906,8 +911,6 @@
                 logX: !!cfg.logX,
                 logY: !!cfg.logY,
                 systemTime: !!cfg.systemTime,
-                linearFit: false,
-                fitResult: null,
                 picks: [], //up to two {datasetIndex, index, x, y, z}
                 preview: null, //nearest point under the mouse in pick mode
                 pendingCal: null, //pick output waiting for a user value
@@ -967,8 +970,6 @@
                 html += toolButton(g, "logX", graphStrings.logX, "toggle");
             if (cfg.logY && !g.isMap)
                 html += toolButton(g, "logY", graphStrings.logY, "toggle");
-            if (!g.isMap && !cfg.logX && !cfg.logY)
-                html += toolButton(g, "fit", graphStrings.linearFit, "toggle");
             if (cfg.timeOnX || cfg.timeOnY)
                 html += toolButton(g, "systemTime", graphStrings.systemTime, "toggle");
             html += "<span class=\"graphHint\">" + escapeHTML(graphStrings.zoomHint) + "</span>";
@@ -996,7 +997,6 @@
             g.infoHTML = null;
             g.picks = [];
             g.pendingCal = null;
-            g.fitResult = null;
             updateToolbar(g);
         }
 
@@ -1296,26 +1296,6 @@
             };
         }
 
-        function fitDatasetOptions(g) {
-            return {
-                type: "scatter",
-                data: [],
-                phyphoxStyle: "fit",
-                showLine: true,
-                fill: false,
-                pointRadius: 0,
-                pointHitRadius: 0,
-                pointHoverRadius: 0,
-                borderColor: frameColor(),
-                borderWidth: 1.5 * scaleFactor,
-                borderDash: [6 * scaleFactor, 4 * scaleFactor],
-                spanGaps: false,
-                xAxisID: "x",
-                yAxisID: "y",
-                order: -1
-            };
-        }
-
         function zoomOptions(g) {
             var on = g.interactive && g.mode == "zoom";
             return {
@@ -1324,6 +1304,7 @@
                     pinch: {enabled: on},
                     drag: {
                         enabled: on,
+                        modifierKey: "shift",
                         threshold: 8,
                         backgroundColor: brightMode ? "rgba(32,32,32,0.2)" : "rgba(255,255,255,0.2)",
                         borderColor: frameColor(),
@@ -1345,7 +1326,6 @@
                     enabled: on,
                     mode: "xy",
                     scaleMode: "xy",
-                    modifierKey: "shift",
                     threshold: 5,
                     onPan: function(ctx) { captureUserRange(g, ctx.chart); },
                     onPanComplete: function(ctx) { onUserRangeChanged(g, ctx.chart); }
@@ -1380,7 +1360,6 @@
             var canvas = el.getElementsByClassName("graph")[0].getElementsByTagName("canvas")[0];
             var cfg = g.cfg;
             var datasets = cfg.datasets.map(function(ds, i) { return datasetOptions(g, ds, i); });
-            datasets.push(fitDatasetOptions(g));
             //Chart.js gets no pointer events at all: hover highlights and tooltips are off, the data
             //picker below reads the pointer itself and the zoom plugin has its own listeners
             var chart = new Chart(canvas, {
@@ -1395,8 +1374,7 @@
                     plugins: {
                         legend: {display: false},
                         tooltip: {enabled: false},
-                        zoom: zoomOptions(g),
-                        phyphox: {graph: g}
+                        zoom: zoomOptions(g)
                     },
                     scales: {
                         x: scaleOptions(g, "x"),
@@ -1404,6 +1382,9 @@
                     }
                 }
             });
+            //The plugin below reads the live graph state from the chart itself: plugin options would
+            //be copied by Chart.js at every update and go stale in between
+            chart.phyphoxGraph = g;
             attachPicker(g, canvas);
             return chart;
         }
@@ -1442,19 +1423,6 @@
                 g.status = "noValidData";
             else
                 g.status = anyPointInRange(points, rx, ry, g) ? "ok" : "noDataInRange";
-
-            var fitData = [];
-            if (g.linearFit && !g.isMap) {
-                g.fitResult = linearFit(points, rx, ry, g);
-                if (g.fitResult) {
-                    var x0 = rx.min, x1 = rx.max;
-                    if (g.logX) { x0 = Math.max(x0, 1e-12); }
-                    fitData = [{x: x0, y: g.fitResult.a * x0 + g.fitResult.b}, {x: x1, y: g.fitResult.a * x1 + g.fitResult.b}];
-                }
-            } else {
-                g.fitResult = null;
-            }
-            chart.data.datasets[chart.data.datasets.length - 1].data = fitData;
 
             //Picked points follow the data: keep the index, refresh the values
             g.picks = g.picks.filter(function(p) {
@@ -1500,39 +1468,6 @@
             return false;
         }
 
-        //Least squares fit through the points of the first dataset that lie in the visible range
-        function linearFit(points, rx, ry, g) {
-            var d = null;
-            for (var i = 0; i < points.length; i++) {
-                var style = g.cfg.datasets[i].style;
-                if (style != "map" && style != "vbars" && style != "hbars") {
-                    d = points[i];
-                    break;
-                }
-            }
-            if (!d)
-                return null;
-            var n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
-            for (var j = 0; j < d.length; j++) {
-                var p = d[j];
-                if (!isFiniteNumber(p.x) || !isFiniteNumber(p.y))
-                    continue;
-                if (p.x < rx.min || p.x > rx.max || p.y < ry.min || p.y > ry.max)
-                    continue;
-                n++;
-                sx += p.x;
-                sy += p.y;
-                sxx += p.x * p.x;
-                sxy += p.x * p.y;
-            }
-            var det = n * sxx - sx * sx;
-            if (n < 2 || Math.abs(det) < 1e-300)
-                return null;
-            var a = (n * sxy - sx * sy) / det;
-            var b = (sy - a * sx) / n;
-            return {a: a, b: b, n: n};
-        }
-
         /*
          * Interaction
          */
@@ -1545,8 +1480,6 @@
             if (!interactive) {
                 g.picks = [];
                 g.pendingCal = null;
-                g.linearFit = false;
-                g.fitResult = null;
             }
             applyModeToChart(g);
             updateToolbar(g);
@@ -1615,9 +1548,6 @@
                     if (g.chart)
                         g.chart.options.scales.y = scaleOptions(g, "y");
                     break;
-                case "fit":
-                    g.linearFit = !g.linearFit;
-                    break;
                 case "systemTime":
                     g.systemTime = !g.systemTime;
                     if (g.systemTime)
@@ -1648,7 +1578,6 @@
                     case "follow": active = g.follow; break;
                     case "logX": active = g.logX; break;
                     case "logY": active = g.logY; break;
-                    case "fit": active = g.linearFit; break;
                     case "systemTime": active = g.systemTime; break;
                     case "reset": b.disabled = !(g.userRange.x || g.userRange.y); break;
                 }
@@ -1664,8 +1593,6 @@
             var bestDist = Number.POSITIVE_INFINITY;
             for (var di = 0; di < chart.data.datasets.length; di++) {
                 var ds = chart.data.datasets[di];
-                if (ds.phyphoxStyle == "fit")
-                    continue;
                 var d = ds.data;
                 for (var j = 0; j < d.length; j++) {
                     var p = d[j];
@@ -1771,7 +1698,7 @@
                     var second = pickAt(g, pos);
                     g.preview = null;
                     setPicks(g, second && !samePoint(second, drag.first) ? [drag.first, second] : [drag.first]);
-                } else if (!drag && e.pointerType == "mouse") {
+                } else if (!drag && e.pointerType != "touch" && !e.buttons) {
                     schedulePreview(pos);
                 }
             });
@@ -1827,11 +1754,6 @@
                 return;
             var cfg = g.cfg;
             var lines = [];
-            if (g.interactive && g.fitResult) {
-                lines.push("<b>" + escapeHTML(graphStrings.fit) + "</b>");
-                lines.push("a = " + escapeHTML(withUnit(formatG(g.fitResult.a, 5), slopeUnit(cfg))));
-                lines.push("b = " + escapeHTML(withUnit(formatG(g.fitResult.b, 5), cfg.unitY)));
-            }
             if (g.interactive && g.mode == "pick") {
                 var clearButton = "<button type=\"button\" class=\"pickClear\" title=\"" + escapeHTML(graphStrings.cancel) + "\" onclick=\"PhyphoxGraph.clearPicks(" + g.index + ", event)\">&#x2715;</button>";
                 g.picks.forEach(function(p, i) {
@@ -1880,10 +1802,9 @@
             positionInfo(g, box);
         }
 
-        //With picks the box sits next to the last picked point, like the popup in the app; otherwise
-        //it stays in its default corner
+        //With picks the box sits next to the last picked point, like the popup in the app
         function positionInfo(g, box) {
-            if (!g.chart || !(g.interactive && g.mode == "pick" && g.picks.length > 0) || box.style.display == "none") {
+            if (!g.chart || g.picks.length == 0 || box.style.display == "none") {
                 box.style.left = "";
                 box.style.top = "";
                 return;
@@ -2281,13 +2202,13 @@
 
         Chart.register({
             id: "phyphox",
-            beforeDatasetsDraw: function(chart, args, options) {
-                var g = options.graph;
+            beforeDatasetsDraw: function(chart) {
+                var g = chart.phyphoxGraph;
                 if (g && g.isMap)
                     drawColorMap(chart, g);
             },
-            afterDatasetsDraw: function(chart, args, options) {
-                var g = options.graph;
+            afterDatasetsDraw: function(chart) {
+                var g = chart.phyphoxGraph;
                 var ctx = chart.ctx;
                 var area = chart.chartArea;
                 ctx.save();
@@ -2317,7 +2238,6 @@
                 userRange: g.userRange,
                 picks: g.picks.map(function(p) { return {datasetIndex: p.datasetIndex, index: p.index, x: p.x, y: p.y}; }),
                 preview: g.preview ? {datasetIndex: g.preview.datasetIndex, index: g.preview.index} : null,
-                fit: g.fitResult,
                 pointCounts: g.chart ? g.chart.data.datasets.map(function(d) { return d.data.length; }) : null
             };
         }
