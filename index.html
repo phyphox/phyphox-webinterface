@@ -1497,7 +1497,7 @@
             var picking = g.interactive && g.mode == "pick";
             chart.options.plugins.zoom = zoomOptions(g);
             var canvas = chart.canvas;
-            canvas.style.cursor = picking ? "crosshair" : (g.interactive ? "move" : "");
+            canvas.style.cursor = picking ? "crosshair" : (g.interactive ? "move" : "pointer");
             g.preview = null;
             chart.update("none");
             //A finger dragging between two points must not scroll or navigate the page. Set after the
@@ -1656,6 +1656,14 @@
         function attachPicker(g, canvas) {
             var drag = null;
             var previewPending = false;
+
+            //A plot that is not maximized has no interaction of its own: a tap or click maximizes it
+            canvas.addEventListener("click", function(e) {
+                if (!g.interactive) {
+                    e.stopPropagation();
+                    toggleExclusive(g.index);
+                }
+            });
 
             function schedulePreview(pos) {
                 g.preview = pickAt(g, pos);

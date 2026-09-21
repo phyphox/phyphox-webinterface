@@ -482,6 +482,13 @@ test('leaving the maximized view, switching views, bright mode and font size rec
   await page.click(sel(first, '.label'));
   await sleep(400);
   assert.equal(await page.evaluate(() => document.body.classList.contains('exclusive')), false);
+  // a click on the plot itself maximizes it as well
+  await page.click(sel(first, 'canvas'));
+  await sleep(400);
+  assert.equal(await page.evaluate(() => document.body.classList.contains('exclusive')), true, 'click on the plot maximizes');
+  assert.equal((await state(first)).interactive, true);
+  await page.click(sel(first, '.label'));
+  await sleep(400);
   await page.click('#viewSelector li:nth-child(2)');
   await sleep(800);
   assert.ok(await page.evaluate(() => document.querySelectorAll('#views canvas').length) >= 1);
