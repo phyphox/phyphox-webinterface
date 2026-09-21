@@ -249,8 +249,14 @@ test('follow: switched on without a zoom the window keeps its width and slides w
   if (idx === null) return;
   await startMeasuring(2);
   await maximize(idx);
-  const before = await scales(idx);
-  await page.click(sel(idx, '.graphTool_follow'));
+  // The plot keeps growing with the data between two puppeteer calls, so the width and the click
+  // that freezes it happen in one JavaScript turn - otherwise "the width at the click" is a race
+  const before = await page.evaluate(i => {
+    const c = Chart.getChart(document.querySelector('#element' + i + ' canvas'));
+    const w = {x: [c.scales.x.min, c.scales.x.max]};
+    document.querySelector('#element' + i + ' .graphTool_follow').click();
+    return w;
+  }, idx);
   await sleep(1200);
   const s1 = await scales(idx);
   await sleep(1200);
