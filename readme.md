@@ -87,7 +87,25 @@ block must be on a line of its own (an `<!--` comment is valid JavaScript there)
 ### The view layout
 
 `viewLayout` is replaced with `var views = [...]; var clearGroups = [...];`. `views` is an array of
-`{"name": ..., "elements": [...]}`. Each element carries
+`{"name": ..., "elements": [...]}`. An entry of `elements` is either a leaf element (below) or a
+**view group** (file format 1.21, see the phyphox-docs page "View groups"), which nests: a group is
+`{"type": "vertical"|"horizontal"|"grid"|"stack"|"transform", "elements": [...]}` and holds its
+children in the same form, to any depth. Groups have no `index` and no `html`: the interface builds
+the container itself. Leaves keep their shape and their `index`, which stays a global sequential
+number in document order across the whole tree, so `element<index>` and
+`control?cmd=trigger&element=` are unaffected by grouping. A group carries
+
+| Key | Meaning |
+|---|---|
+| `type` | `vertical`, `horizontal`, `grid`, `stack` or `transform` |
+| `elements` | The children, leaves or groups |
+| `weight` | On every direct child (leaf or group) of a `horizontal`: its share of the row (default 1); absent elsewhere |
+| `maxWidth`, `fillLastRow` | `grid` only: the largest column width in text line heights (`em` of the element), and whether an incomplete last row is split among its children |
+| `originX`, `originY` | `transform` only: the origin of scaling and rotation as fractions of the wrapped element (default 0.5) |
+| `transformInputs` | `transform` only: array of `{"as": "scale"/"scaleX"/"scaleY"/"translateX"/"translateY"/"rotate"/"opacity", "buffer": name or null, "value": number or null, "min", "max", "mapMin", "mapMax", "clamp"}`; the property is `mapMin + (v - min) * (mapMax - mapMin) / (max - min)` of the buffer's last value (or the constant), limited to the map range with `clamp`, and keeps its neutral value while the buffer is empty, the value is not finite or `min == max`. Rotation is in radians, clockwise; lengths are fractions of the wrapped element's own size; the properties compose as scale, then rotation, then translation about the origin |
+| `visibilityInput` | Optional, as on a leaf: hides the whole group |
+
+A `transform` has exactly one child. Each leaf element carries
 
 | Key | Meaning |
 |---|---|
@@ -127,14 +145,18 @@ All keys are always present (use `null` for "not set"), booleans are booleans, n
 | `followX` | boolean | Keep a window of `maxX - minX` anchored at the newest x value (initial state of the "follow" toggle) |
 | `partialUpdate` | boolean | The x values (y for maps) are monotonic, so only new data is transferred |
 | `mapWidth` | integer | Number of points per row of a color map |
-| `colorScale` | array of `"#rrggbb"` | Colors of a color map from low to high z; omitted for the default black-orange-white |
+| `plotLeft`, `plotTop`, `plotRight`, `plotBottom` | number or null | Fixed plot area as fractions of the graph element's box (file format 1.21); `null` = automatic layout. Any one set fixes the layout, the unset ones default to the corresponding edge (0, 0, 1, 1) |
+| `colorScale` | array of `"#rrggbb"` or `"#rrggbbaa"` | Colors of a color map from low to high z; omitted for the default black-orange-white |
 | `showColorScale` | boolean | Draw the color scale next to a map |
 | `interpolateMapColors` | boolean | Interpolate between the colors of the scale |
-| `datasets` | array | One entry per curve: `{"x": name or null, "y": name, "z": name or null, "style": "lines"/"dots"/"vbars"/"hbars"/"map", "lineWidth": number, "color": "#rrggbb"}`. A dataset without `x` is plotted against the index. A map has exactly one dataset with `z` |
+| `datasets` | array | One entry per curve: `{"x": name or null, "y": name, "z": name or null, "style": "lines"/"dots"/"vbars"/"hbars"/"map", "lineWidth": number, "color": "#rrggbb" or "#rrggbbaa"}`. A dataset without `x` is plotted against the index. A map has exactly one dataset with `z` |
 | `pickLabel` | string or null | Label of the data picker mode from the experiment (informational) |
 | `pickOutputs` | array | The data picker outputs: `{"axis": "x"/"y"/"z", "buffer": name, "label": text, "calBuffer": name or null, "calLabel": text or null}`. Each becomes a button that writes the picked value into `buffer` via `POST /set` (replacing the buffer contents); with `calBuffer` the user is asked for a value that is written there in the same request |
 
-Colors are the experiment's colors as given; the interface adapts them to its bright mode itself.
+Colors are the experiment's colors as given; the interface adapts them to its bright mode itself. A
+color is `#rrggbb`, or `#rrggbbaa` when the experiment gave it an alpha byte (file format 1.21); the
+bright-mode adjustment keeps the alpha. The same two forms appear in the inline styles of the
+`html` of value, info and separator elements.
 
 ### Graph strings
 

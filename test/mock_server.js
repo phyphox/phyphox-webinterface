@@ -1,6 +1,6 @@
 // A stand-in for the app's remote server: serves this repository's index.html and style.css the
 // way the apps do (placeholders replaced), with a synthetic experiment that exercises every graph
-// variant, and just enough of the REST API (/get, /control, /set, /time, /export) for the
+// variant, and just enough of the REST API (/get, /control, /set, /time, /export, /res) for the
 // interface to run. It also serves fixtures/ so the test experiment can be pushed to a phone.
 //
 //     node mock_server.js [port]          (default 8081)
@@ -25,7 +25,7 @@ function createExperiment() {
   const sizes = {};
   const buf = (name, size) => { buffers[name] = []; sizes[name] = size; };
   ['acc_time', 'accX', 'accY', 'accZ', 'acc', 'xd', 'yd', 'hx', 'hy', 'fmap', 'tmap', 'fftmap', 'lx', 'ly', 'neverX', 'neverY', 'nanX', 'nanY'].forEach(n => buf(n, 0));
-  ['pickedX', 'assigned', 'pickedY', 'value'].forEach(n => buf(n, 1));
+  ['pickedX', 'assigned', 'pickedY', 'value', 'angle', 'fade'].forEach(n => buf(n, 1));
 
   const push = (name, v) => {
     const b = buffers[name];
@@ -142,16 +142,25 @@ function base(over) {
     scaleMinY: 'auto', scaleMaxY: 'auto', minY: 0, maxY: 0,
     scaleMinZ: 'auto', scaleMaxZ: 'auto', minZ: 0, maxZ: 0,
     followX: false, partialUpdate: false,
+    plotLeft: null, plotTop: null, plotRight: null, plotBottom: null,
     mapWidth: 0, showColorScale: true, interpolateMapColors: true,
     datasets: [], pickLabel: null, pickOutputs: []
   }, over);
 }
-function valueElement(label, index, buffer, unit, precision) {
+function valueElement(label, index, buffer, unit, precision, color) {
   return {label, index: String(index), updateMode: 'single', labelSize: '42',
-    html: `<div style="font-size:105%;" class="valueElement adjustableColor" id="element${index}"><span class="label">${label}</span><span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
+    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor" id="element${index}"><span class="label">${label}</span><span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
     dataCompleteFunction: `function() { var v = elementData[${index}].value; if (v === undefined) return; document.getElementById("element${index}").getElementsByClassName("valueNumber")[0].textContent = (v === null || isNaN(v)) ? "-" : v.toFixed(${precision}); }`,
     dataInput: [buffer], dataInputFunction: `function(data) { if (!data.hasOwnProperty("${buffer}")) return; var d = data["${buffer}"].data; elementData[${index}].value = d[d.length-1]; }`};
 }
+function imageElement(index, src) {
+  return {label: '', index: String(index), updateMode: 'none', labelSize: '42',
+    html: `<div class="imageElement" id="element${index}"><img style="width: 100%" class="lightFilter_none darkFilter_none" src="res?src=${encodeURIComponent(src)}"></div>`,
+    dataCompleteFunction: 'function() {}'};
+}
+// A view group (file format 1.21): type, its children and the type's attributes; no index, no html
+const group = (type, elements, over) => Object.assign({type, elements}, over || {});
+const identity = {min: 0, max: 1, mapMin: 0, mapMax: 1, clamp: false};
 const line = (x, y, color, style) => ({x, y, z: null, style: style || 'lines', lineWidth: 1.0, color: color || '#ff7e22'});
 const views = [
   {name: 'Graphs', elements: [
@@ -197,23 +206,59 @@ const views = [
     graph('Log y', 15, 'partial', ['acc', 'acc_time'], base({
       labelX: 't', unitX: 's', labelY: 'a²', unitY: 'm²/s⁴', logY: true, partialUpdate: true,
       datasets: [line('acc_time', 'acc')]})),
+  ]},
+  // View groups, transforms, alpha colours and a fixed plot area (file format 1.21); mirrors fixtures/webgroups.phyphox
+  {name: 'Groups', elements: [
+    group('horizontal', [
+      Object.assign(valueElement('Weight two', 16, 'value', '', 2), {weight: 2}),
+      Object.assign(valueElement('Weight one', 17, 'value', '', 2), {weight: 1}),
+      group('vertical', [valueElement('Column a', 18, 'value', '', 2), valueElement('Column b', 19, 'value', '', 2)], {weight: 1})
+    ]),
+    group('grid', [
+      graph('Grid x', 20, 'partial', ['accX', 'acc_time'], base({labelX: 't', unitX: 's', labelY: 'x', partialUpdate: true, datasets: [line('acc_time', 'accX')]})),
+      graph('Grid y', 21, 'partial', ['accY', 'acc_time'], base({labelX: 't', unitX: 's', labelY: 'y', partialUpdate: true, datasets: [line('acc_time', 'accY')]})),
+      graph('Grid z', 22, 'partial', ['accZ', 'acc_time'], base({labelX: 't', unitX: 's', labelY: 'z', partialUpdate: true, datasets: [line('acc_time', 'accZ')]}))
+    ], {maxWidth: 25, fillLastRow: true}),
+    group('stack', [
+      imageElement(23, 'face.png'),
+      group('transform', [imageElement(24, 'needle.png')], {originX: 0.5, originY: 0.8, transformInputs: [
+        Object.assign({as: 'rotate', buffer: 'angle', value: null}, identity, {min: 0, max: 360, mapMin: 0, mapMax: 6.2832, clamp: true}),
+        Object.assign({as: 'opacity', buffer: 'fade', value: null}, identity)
+      ]}),
+      group('transform', [valueElement('Percent', 25, 'value', '%', 0)], {originX: 0.5, originY: 0.5, transformInputs: [
+        Object.assign({as: 'scale', buffer: null, value: 0.5}, identity)
+      ]}),
+      graph('Overlay', 26, 'full', ['hy', 'hx'], base({labelX: 'bin', labelY: 'count', plotLeft: 0.1, plotTop: 0.1, plotRight: 0.9, plotBottom: 0.9, datasets: [line('hx', 'hy', '#ff7e2280')]}))
+    ]),
+    valueElement('Alpha value', 27, 'value', '', 2, 'ff7e2280')
   ]}
 ];
+
+function elementsJson(elements) {
+  let s = '';
+  elements.forEach((e, ei) => {
+    if (ei > 0) s += ',';
+    if (e.elements) {
+      // a group: every key but the children as JSON, the children recursively
+      const {elements, ...rest} = e;
+      s += JSON.stringify(rest).slice(0, -1) + ',"elements":[\n' + elementsJson(elements) + '\n]}';
+      return;
+    }
+    s += '{"label":' + JSON.stringify(e.label) + ',"index":"' + e.index + '","updateMode":"' + e.updateMode + '","labelSize":"' + e.labelSize + '","html":' + JSON.stringify(e.html) + ',"dataCompleteFunction":' + e.dataCompleteFunction;
+    if (e.weight != null) s += ',"weight":' + e.weight;
+    if (e.dataInput) s += ',"dataInput":' + JSON.stringify(e.dataInput) + ',"dataInputFunction":\n' + e.dataInputFunction + '\n';
+    if (e.graph) s += ',"graph":' + JSON.stringify(e.graph);
+    s += '}';
+  });
+  return s;
+}
 
 function viewsJson() {
   // The two function entries are JavaScript source, so the layout is assembled by hand like the apps do
   let s = 'var views = [';
   views.forEach((v, vi) => {
     if (vi > 0) s += ',\n';
-    s += '{"name": ' + JSON.stringify(v.name) + ', "elements":[\n';
-    v.elements.forEach((e, ei) => {
-      if (ei > 0) s += ',';
-      s += '{"label":' + JSON.stringify(e.label) + ',"index":"' + e.index + '","updateMode":"' + e.updateMode + '","labelSize":"' + e.labelSize + '","html":' + JSON.stringify(e.html) + ',"dataCompleteFunction":' + e.dataCompleteFunction;
-      if (e.dataInput) s += ',"dataInput":' + JSON.stringify(e.dataInput) + ',"dataInputFunction":\n' + e.dataInputFunction + '\n';
-      if (e.graph) s += ',"graph":' + JSON.stringify(e.graph);
-      s += '}';
-    });
-    s += '\n]}';
+    s += '{"name": ' + JSON.stringify(v.name) + ', "elements":[\n' + elementsJson(v.elements) + '\n]}';
   });
   return s + '\n];var clearGroups = [];';
 }
@@ -262,6 +307,11 @@ function start(port, log) {
           return json(200, exp.set(JSON.parse(body)));
         }
         if (u.pathname === '/export') return send(200, 'text/plain', 'export mock');
+        if (u.pathname === '/res') {
+          const file = path.join(__dirname, 'fixtures', path.basename(String(u.query.src || '')));
+          if (u.query.src && fs.existsSync(file) && file.endsWith('.png')) return send(200, 'image/png', fs.readFileSync(file));
+          return json(200, {error: 'Unknown file.'});
+        }
         if (u.pathname.startsWith('/fixtures/')) {
           const file = path.join(__dirname, 'fixtures', path.basename(u.pathname));
           if (fs.existsSync(file)) return send(200, 'application/octet-stream', fs.readFileSync(file));

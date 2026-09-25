@@ -270,6 +270,15 @@ ul {
     display: block;
 }
 
+/* A maximized element inside view groups: the groups on the path down to it stay, their other children hide */
+.exclusive .elementBlock > .exclusivePath {
+    display: block;
+}
+
+.exclusive .exclusivePath > :not(.exclusivePath):not(.exclusive) {
+    display: none;
+}
+
 .columns2 .elementBlock {
     display: inline-block;
     width: 50%;
@@ -427,6 +436,82 @@ ul {
 
 .imageElement {
     text-align: center;
+}
+
+.imageElement img {
+    display: inline-block;
+    vertical-align: top;
+}
+
+/* View groups (file format 1.21, phyphox-docs views/groups.md). The per-child flex values of horizontal and grid
+   are set by the page (layoutGroups); a group is never positioned, so a maximized graph inside one still fills #views. */
+.groupElement {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.groupElement > * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.group_vertical {
+    display: block;
+}
+
+.group_horizontal {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.group_grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.group_stack {
+    display: grid;
+    grid-template-columns: 100%;
+    pointer-events: none;
+}
+
+.group_stack > * {
+    grid-area: 1 / 1;
+    align-self: center;
+    width: 100%;
+}
+
+.group_transform {
+    display: block;
+    will-change: transform;
+}
+
+/* Inside a group an element takes its cell; the graph's page margins are for the top level only */
+.groupElement .graphElement {
+    width: 100%;
+    margin: 0;
+}
+
+.groupElement .valueElement, .groupElement .editElement {
+    width: 100%;
+}
+
+.group_stack .graphElement .label {
+    cursor: default;
+    background-image: none;
+    padding-left: 0;
+}
+
+/* With a fixed plot area the whole element is the plot; the label is drawn into the plot's top margin */
+.graphElement.fixedPlotArea > .label {
+    display: none;
+}
+
+.graphElement.fixedPlotArea.exclusive > .label {
+    display: block;
 }
 
 .darkFilter_invert, .brightMode .lightFilter_invert {

@@ -580,3 +580,203 @@ test('legacy elements with app-generated functions still update', async t => {
   const text = await page.evaluate(() => Array.from(document.querySelectorAll('.valueElement')).map(e => e.innerText.replace(/\s+/g, ' ')).join(' | '));
   assert.match(text, /Current value\s*\d+\.\d\d m\/s²/);
 });
+
+// ---- view groups, transforms, alpha colours and the fixed plot area (file format 1.21) ----
+// The "Groups" view exists in the mock and in fixtures/webgroups.phyphox; against an app serving another experiment
+// these tests skip.
+
+const post = (p, body) => page.evaluate(async (p, body) => (await fetch(p, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).json(), p, body);
+const rect = sel => page.evaluate(sel => {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height};
+}, sel);
+const rects = sel => page.evaluate(sel => Array.from(document.querySelectorAll(sel)).map(el => {
+  const r = el.getBoundingClientRect();
+  return {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, display: getComputedStyle(el).display};
+}), sel);
+const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
+// The 2D matrix of an element's computed transform as [a, b, c, d, e, f]; identity for "none"
+const matrix = sel => page.evaluate(sel => {
+  const t = getComputedStyle(document.querySelector(sel)).transform;
+  if (t === 'none') return [1, 0, 0, 1, 0, 0];
+  return t.replace(/[^\d,.eE-]/g, '').split(',').map(parseFloat);
+}, sel);
+
+async function requireView(t, name) {
+  const idx = await page.evaluate(n => views.findIndex(v => v.name === n), name);
+  if (idx < 0) { t.skip(`no view "${name}" in the served experiment`); return false; }
+  await page.evaluate(i => switchView(i), idx);
+  await sleep(700);
+  return true;
+}
+
+test('view groups: a horizontal splits the row by weight, a grid picks its columns from the width, a stack shares one rectangle', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  // horizontal: weights 2, 1, 1 -> the first child is twice as wide, all are centred on one row
+  const row = await rects('#views .group_horizontal > *');
+  assert.equal(row.length, 3);
+  near(row[0].width / row[1].width, 2, 0.1, 'weight 2 vs 1');
+  near(row[1].width, row[2].width, 2, 'equal weights');
+  const rowRect = await rect('#views .group_horizontal');
+  const rowCentre = (rowRect.top + rowRect.bottom) / 2;
+  row.forEach((r, i) => near((r.top + r.bottom) / 2, rowCentre, 3, `child ${i} centred in the row`));
+  assert.ok(row[2].height > row[0].height, 'the vertical child with two values is the tallest');
+
+  // grid: n = ceil(width / (maxWidth em)); with fillLastRow the children of the last row share it
+  const gridState = async () => page.evaluate(() => {
+    const grid = document.querySelector('#views .group_grid');
+    const em = parseFloat(getComputedStyle(grid).fontSize);
+    const children = Array.from(grid.children).map(c => c.getBoundingClientRect());
+    return {width: grid.getBoundingClientRect().width, em, children: children.map(r => ({top: Math.round(r.top), width: r.width}))};
+  });
+  for (const viewport of [1400, 700, 380]) {
+    await page.setViewport({width: viewport, height: 900, deviceScaleFactor: 1});
+    await sleep(400);
+    const g = await gridState();
+    const expected = Math.max(1, Math.ceil(g.width / (25 * g.em) - 1e-6));
+    const firstRow = g.children.filter(c => c.top === g.children[0].top).length;
+    assert.equal(firstRow, Math.min(expected, 3), `columns at ${viewport}px (grid ${Math.round(g.width)}px, em ${g.em})`);
+    const lastRowCount = ((3 - 1) % expected) + 1;
+    near(g.children[2].width, g.width / lastRowCount, 2, `fillLastRow at ${viewport}px`);
+  }
+  await page.setViewport({width: 1400, height: 900, deviceScaleFactor: 1});
+  await sleep(400);
+
+  // stack: every child takes the full width, the tallest sets the height, the others are centred (layout boxes,
+  // i.e. before the CSS transforms of the transform children)
+  const stack = await page.evaluate(() => { const s = document.querySelector('#views .group_stack'); return {width: s.offsetWidth, height: s.offsetHeight}; });
+  // offsets relative to the stack (the stack is not positioned, so the children's offsetParent is further up)
+  const layers = await page.evaluate(() => { const s = document.querySelector('#views .group_stack'); return Array.from(s.children).map(c => ({left: c.offsetLeft - s.offsetLeft, width: c.offsetWidth, top: c.offsetTop - s.offsetTop, height: c.offsetHeight})); });
+  assert.ok(layers.length >= 3);
+  let tallest = 0;
+  layers.forEach((l, i) => {
+    near(l.left, 0, 1, `layer ${i} left`);
+    near(l.width, stack.width, 1, `layer ${i} width`);
+    near(l.top + l.height / 2, stack.height / 2, 2, `layer ${i} centred`);
+    tallest = Math.max(tallest, l.height);
+  });
+  near(stack.height, tallest, 1, 'stack height = tallest child');
+  // the image below the plot came through /res
+  const img = await page.evaluate(() => { const i = document.querySelector('#views .group_stack img'); return {complete: i.complete, w: i.naturalWidth}; });
+  assert.ok(img.complete && img.w > 0, 'the stack image loaded via /res');
+  assertNoErrors();
+});
+
+test('transform: a bound container drives the wrapped element through the range map with clamp, a constant scales, an empty or NaN container is neutral', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  const needle = '#views .group_stack > .group_transform:nth-of-type(2)';
+  const percent = '#views .group_stack > .group_transform:nth-of-type(3)';
+  // nothing written yet: neutral
+  let m = await matrix(needle);
+  near(m[0], 1, 1e-6, 'neutral a'); near(m[1], 0, 1e-6, 'neutral b');
+  // 90 of 0..360 -> pi/2 of 0..2pi: rotate(90deg) = matrix(0, 1, -1, 0, 0, 0)
+  await post('set', {buffers: {angle: [90]}});
+  await sleep(800);
+  m = await matrix(needle);
+  near(m[0], 0, 0.01, 'rotated a'); near(m[1], 1, 0.01, 'rotated b');
+  const origin = await page.evaluate(s => getComputedStyle(document.querySelector(s)).transformOrigin, needle);
+  const box = await page.evaluate(s => { const el = document.querySelector(s); return {width: el.offsetWidth, height: el.offsetHeight}; }, needle);
+  near(parseFloat(origin.split(' ')[0]), box.width * 0.5, 1, 'originX');
+  near(parseFloat(origin.split(' ')[1]), box.height * 0.8, 1, 'originY');
+  // 540 is clamped to the end of the map (a full turn), not a half turn
+  await post('set', {buffers: {angle: [540]}});
+  await sleep(800);
+  m = await matrix(needle);
+  near(m[0], 1, 0.01, 'clamped a');
+  // opacity through the identity map
+  await post('set', {buffers: {fade: [0.25]}});
+  await sleep(800);
+  assert.equal(await page.evaluate(s => getComputedStyle(document.querySelector(s)).opacity, needle), '0.25');
+  // NaN (null in the body) and an empty container leave the neutral value
+  await post('set', {buffers: {angle: [null]}});
+  await sleep(800);
+  m = await matrix(needle);
+  near(m[0], 1, 1e-6, 'NaN is neutral');
+  await post('set', {buffers: {angle: []}});
+  await sleep(800);
+  m = await matrix(needle);
+  near(m[0], 1, 1e-6, 'empty is neutral');
+  // the constant input
+  m = await matrix(percent);
+  near(m[0], 0.5, 1e-6, 'constant scale');
+  near(m[3], 0.5, 1e-6, 'constant scale y');
+  assertNoErrors();
+});
+
+test('a graph inside a grid maximizes to the whole view and the grid comes back when it is left; a stack takes no clicks', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  const idx = await requireGraph(t, 'Grid x');
+  if (idx === null) return;
+  const before = await rect(sel(idx, '.graphBox'));
+  await page.click(sel(idx, '.label'));
+  await sleep(600);
+  assert.ok(await page.evaluate(() => document.body.classList.contains('exclusive')));
+  const views = await rect('#views');
+  const maxed = await rect(`#element${idx}`);
+  near(maxed.left, views.left, 2, 'fills left'); near(maxed.right, views.right, 2, 'fills right');
+  near(maxed.top, views.top, 2, 'fills top'); near(maxed.bottom, views.bottom, 2, 'fills bottom');
+  const siblings = await rects('#views .group_grid > .graphElement:not(.exclusive)');
+  siblings.forEach((s, i) => assert.equal(s.display, 'none', `grid sibling ${i} hidden`));
+  const others = await rects('#views .group_horizontal, #views .group_stack');
+  others.forEach((o, i) => assert.equal(o.display, 'none', `other top-level group ${i} hidden`));
+  await page.click(sel(idx, '.label'));
+  await sleep(600);
+  assert.ok(!(await page.evaluate(() => document.body.classList.contains('exclusive'))));
+  const after = await rect(sel(idx, '.graphBox'));
+  near(after.width, before.width, 2, 'width restored');
+  // the graph in the stack has no label to click and takes no pointer events
+  const overlay = await requireGraph(t, 'Overlay');
+  if (overlay !== null) {
+    const pe = await page.evaluate(i => getComputedStyle(document.getElementById('element' + i).closest('.group_stack')).pointerEvents, overlay);
+    assert.equal(pe, 'none');
+  }
+  assertNoErrors();
+});
+
+test('a fixed plot area pins the chart area to fractions of the element, also after a resize', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  const idx = await requireGraph(t, 'Overlay');
+  if (idx === null) return;
+  const check = async label => {
+    const a = await page.evaluate(i => {
+      const c = Chart.getChart(document.querySelector('#element' + i + ' canvas'));
+      return {left: c.chartArea.left, right: c.chartArea.right, top: c.chartArea.top, bottom: c.chartArea.bottom, w: c.canvas.clientWidth, h: c.canvas.clientHeight};
+    }, idx);
+    near(a.left / a.w, 0.1, 0.01, label + ' left'); near(a.right / a.w, 0.9, 0.01, label + ' right');
+    near(a.top / a.h, 0.1, 0.01, label + ' top'); near(a.bottom / a.h, 0.9, 0.01, label + ' bottom');
+  };
+  await check('initial');
+  await page.setViewport({width: 800, height: 900, deviceScaleFactor: 1});
+  await sleep(600);
+  await check('after resize');
+  await page.setViewport({width: 1400, height: 900, deviceScaleFactor: 1});
+  const st = await state(idx);
+  assert.deepEqual(st.plotArea, {left: 0.1, top: 0.1, right: 0.9, bottom: 0.9});
+  assertNoErrors();
+});
+
+test('colours with an alpha byte keep it on elements and datasets, in dark and in bright mode', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  const valueIdx = await page.evaluate(() => { let f = null; (function walk(es) { es.forEach(ve => { if (ve.elements) walk(ve.elements); else if (ve.label === 'Alpha value') f = ve.index; }); })(views[currentView].elements); return f; });
+  if (valueIdx === null) { t.skip('no "Alpha value" element'); return; }
+  const colorOf = () => page.evaluate(i => getComputedStyle(document.getElementById('element' + i)).color, valueIdx);
+  const dark = await colorOf();
+  assert.match(dark, /rgba\(255, 126, 34, 0\.5\)/, 'dark mode keeps the alpha');
+  const overlay = await requireGraph(t, 'Overlay');
+  const dsColor = () => page.evaluate(i => Chart.getChart(document.querySelector('#element' + i + ' canvas')).data.datasets[0].borderColor, overlay);
+  if (overlay !== null) assert.equal(await dsColor(), '#ff7e2280');
+  await page.evaluate(() => toggleBrightMode());
+  await sleep(600);
+  const bright = await colorOf();
+  assert.match(bright, /rgba\(\d+, \d+, \d+, 0\.5\)/, 'bright mode keeps the alpha');
+  assert.notEqual(bright, dark, 'bright mode adjusts the colour');
+  if (overlay !== null) {
+    const c = await dsColor();
+    assert.match(c, /^#[0-9a-f]{6}80$/, 'dataset colour keeps the alpha byte');
+    assert.notEqual(c, '#ff7e2280');
+  }
+  await page.evaluate(() => toggleBrightMode());
+  assertNoErrors();
+});

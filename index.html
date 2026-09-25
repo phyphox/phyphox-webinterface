@@ -52,7 +52,29 @@
     var data = {};
     var elementData = [];
     var nViews = views.length;
-    var nElements = 1*(views[nViews - 1].elements[views[nViews - 1].elements.length - 1].index)+1;
+    //Elements nest in view groups (file format 1.21): a group has an "elements" array and no index, leaves keep
+    //a global sequential index in document order. forEachElement walks groups and leaves depth first.
+    function forEachElement(elements, fn) {
+        elements.forEach(function(ve) {
+            fn(ve);
+            if (ve.elements)
+                forEachElement(ve.elements, fn);
+        });
+    }
+    var nElements = 0;
+    views.forEach(function(view) {
+        forEachElement(view.elements, function(ve) {
+            if (!ve.elements)
+                nElements = Math.max(nElements, 1*ve.index + 1);
+        });
+    });
+    var groupCount = 0;
+    views.forEach(function(view) {
+        forEachElement(view.elements, function(ve) {
+            if (ve.elements)
+                ve.groupId = "group" + (groupCount++);
+        });
+    });
 
     var measuring = true;
     var countDown = 0;
@@ -123,23 +145,36 @@
             case 5: r = v, g = p, b = q; break;
         }
         var rgb = Math.round(r * 255) * 256 * 256 + Math.round(g * 255) * 256 + Math.round(b * 255);
-        return "#"+ ('000000' + ((rgb)>>>0).toString(16)).slice(-6);
+        var hex = "#"+ ('000000' + ((rgb)>>>0).toString(16)).slice(-6);
+        if (hsv.a != null && hsv.a < 1)
+            hex += ('00' + Math.round(hsv.a * 255).toString(16)).slice(-2);
+        return hex;
     }
 
+    //"#rrggbb", "#rrggbbaa" (file format 1.21), "rgb(r, g, b)" or "rgba(r, g, b, a)" to {r, g, b, a}, a in 0..1
     function stringToRGB(rgb) {
-        var r,g,b;
-        var rgbsep = rgb.replace(/[^\d,]/g, '').split(',');
-        if (rgbsep.length == 3) {
+        var r,g,b,a = 1;
+        if (rgb.indexOf("(") >= 0) {
+            var rgbsep = rgb.replace(/[^\d,.]/g, '').split(',');
             r = parseInt(rgbsep[0]);
             g = parseInt(rgbsep[1]);
             b = parseInt(rgbsep[2]);
+            if (rgbsep.length > 3)
+                a = parseFloat(rgbsep[3]);
         } else {
-            var i = parseInt(rgb.slice(1), 16);
+            var hex = rgb.charAt(0) == "#" ? rgb.slice(1) : rgb;
+            var i = parseInt(hex.slice(0, 6), 16);
             r = (i >> 16) & 255;
             g = (i >> 8) & 255;
             b = i & 255;
+            if (hex.length == 8)
+                a = parseInt(hex.slice(6, 8), 16) / 255;
         }
-        return {r:r, g:g, b:b};
+        return {r:r, g:g, b:b, a:a};
+    }
+
+    function rgbString(c) {
+        return c.a == null || c.a >= 1 ? "rgb(" + c.r + "," + c.g + "," + c.b + ")" : "rgba(" + c.r + "," + c.g + "," + c.b + "," + c.a + ")";
     }
 
     function RGBtoHSV(rgb) {
@@ -175,6 +210,7 @@
             if (rgb.r == 0x20 && rgb.g == 0x20 && rgb.b == 0x20)
                 return "#ffffff";
             var hsv = RGBtoHSV(rgb);
+            hsv.a = rgb.a; //the alpha byte survives the adjustment
             var l = (2.0 - hsv.s) * hsv.v / 2.0;
             var s = l && l<1 ? hsv.s*hsv.v/(l < 0.5 ? l*2.0 : 2.0 - l*2.0) : 0.0
 
@@ -298,7 +334,18 @@
     function updateUsedVarStr() {
         var vars = {};
         var priorities = {};
-        views[currentView].elements.forEach(function(ve) {
+        forEachElement(views[currentView].elements, function(ve) {
+            if (ve.transformInputs) {
+                ve.transformInputs.forEach(function(input) {
+                    if (input.buffer == null)
+                        return;
+                    let key = "buffer:" + input.buffer;
+                    if ((priorities[key] || 0) < 1) {
+                        vars[key] = composeVarStr(input.buffer, "single");
+                        priorities[key] = 1;
+                    }
+                });
+            }
             if (ve.hasOwnProperty("dataInput")) {
                 let dataInput = ve.dataInput;
                 let updateMode = ve.updateMode;
@@ -434,33 +481,138 @@
             window.location.reload(true);
     }
 
+    //The DOM node of a leaf (element<index>) or a group (its groupId)
+    function nodeOf(ve) {
+        return document.getElementById(ve.elements ? ve.groupId : "element" + ve.index);
+    }
+
+    //The last value of a buffer in the data store, or null while it holds nothing
+    function lastValue(name) {
+        if (!data.hasOwnProperty(name))
+            return null;
+        let d = data[name]["data"];
+        return d.length > 0 ? d[d.length-1] : null;
+    }
+
+    //A transform group: the properties from their inputs through the linear map, composed as scale, then
+    //rotation, then translation about the origin (CSS applies the rightmost function first)
+    function applyTransform(ve) {
+        let node = nodeOf(ve);
+        if (!node)
+            return;
+        let p = {scale: 1, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0, rotate: 0, opacity: 1};
+        ve.transformInputs.forEach(function(input) {
+            let v = input.buffer != null ? lastValue(input.buffer) : input.value;
+            if (v == null || !isFinite(v) || input.min == input.max)
+                return;
+            let m = input.mapMin + (v - input.min) * (input.mapMax - input.mapMin) / (input.max - input.min);
+            if (input.clamp)
+                m = Math.max(Math.min(input.mapMin, input.mapMax), Math.min(Math.max(input.mapMin, input.mapMax), m));
+            p[input.as] = m;
+        });
+        node.style.transform = "translate(" + (100 * p.translateX) + "%, " + (100 * p.translateY) + "%) rotate(" + p.rotate + "rad) scale(" + (p.scale * p.scaleX) + ", " + (p.scale * p.scaleY) + ")";
+        node.style.opacity = Math.max(0, Math.min(1, p.opacity));
+    }
+
     function updateViews() {
-        views[currentView].elements.forEach(function(ve) {
+        forEachElement(views[currentView].elements, function(ve) {
             if (ve.hasOwnProperty("dataInputFunction"))
                 ve.dataInputFunction(data);
-            ve.dataCompleteFunction();
+            if (ve.hasOwnProperty("dataCompleteFunction"))
+                ve.dataCompleteFunction();
+            if (ve.transformInputs)
+                applyTransform(ve);
 
-            if (ve.hasOwnProperty("visibilityInput")) {
+            if (ve.hasOwnProperty("visibilityInput") && data.hasOwnProperty(ve["visibilityInput"])) {
                 let visibilityBuffer = data[ve["visibilityInput"]]["data"];
                 let visible = (visibilityBuffer.length > 0) && (visibilityBuffer[visibilityBuffer.length-1] > 0);
-                let element = document.getElementById("element"+ve["index"]);
-                if (!visible && ((element.classList && element.classList.contains("exclusive")) || (element.className.indexOf("exclusive") > -1)))
+                let element = nodeOf(ve);
+                if (!element)
+                    return;
+                if (!visible && (element.classList.contains("exclusive") || element.classList.contains("exclusivePath")))
                     leaveExclusive();
-                element.style.display = visible ? "block" : "none";
+                element.style.display = visible ? (ve.elements ? "" : "block") : "none";
+            }
+        });
+    }
+
+    //The markup of a leaf, or of a group with its children. Groups are plain containers styled by their class;
+    //the per-child styles (weights, grid columns) are applied by layoutGroups once the nodes exist.
+    function elementHTML(ve) {
+        if (!ve.elements)
+            return ve.html;
+        let style = "";
+        if (ve.type == "transform")
+            style = "transform-origin: " + (100 * (ve.originX != null ? ve.originX : 0.5)) + "% " + (100 * (ve.originY != null ? ve.originY : 0.5)) + "%;";
+        let html = "<div class=\"groupElement group_" + ve.type + "\" id=\"" + ve.groupId + "\" style=\"" + style + "\">";
+        ve.elements.forEach(function(child) {
+            html += elementHTML(child);
+        });
+        return html + "</div>";
+    }
+
+    var gridObserver = (typeof ResizeObserver !== "undefined") ? new ResizeObserver(function(entries) {
+        entries.forEach(function(entry) {
+            layoutGrid(entry.target.phyphoxGroup);
+        });
+    }) : null;
+
+    //A grid uses the smallest number of columns that keeps a column at or below maxWidth text line heights
+    //(the em of the element); the children are flex items of a wrapping row, so with fillLastRow the ones of
+    //an incomplete last row grow across it
+    function layoutGrid(ve) {
+        let node = nodeOf(ve);
+        if (!node)
+            return;
+        let em = parseFloat(getComputedStyle(node).fontSize) || 16;
+        let width = node.clientWidth;
+        let maxWidthPx = (ve.maxWidth > 0 ? ve.maxWidth : 25) * em;
+        let columns = Math.max(1, Math.ceil(width / maxWidthPx - 1e-6));
+        ve.columns = columns;
+        ve.elements.forEach(function(child) {
+            let childNode = nodeOf(child);
+            if (childNode)
+                childNode.style.flex = (ve.fillLastRow ? "1" : "0") + " 0 " + (100 / columns) + "%";
+        });
+    }
+
+    function layoutGroups() {
+        forEachElement(views[currentView].elements, function(ve) {
+            if (!ve.elements)
+                return;
+            let node = nodeOf(ve);
+            if (!node)
+                return;
+            if (ve.type == "horizontal") {
+                ve.elements.forEach(function(child) {
+                    let childNode = nodeOf(child);
+                    if (childNode)
+                        childNode.style.flex = (child.weight != null ? child.weight : 1) + " 1 0";
+                });
+            } else if (ve.type == "grid") {
+                node.phyphoxGroup = ve;
+                layoutGrid(ve);
+                if (gridObserver)
+                    gridObserver.observe(node);
             }
         });
     }
 
     function recreateViews() {
         PhyphoxGraph.destroyAll();
+        if (gridObserver)
+            gridObserver.disconnect();
         viewsNode.innerHTML = "";
         for (i = 0; i < nElements; i++)
             elementData[i] = {};
 
+        var html = "";
         views[currentView].elements.forEach(function(ve) {
-            viewsNode.innerHTML += ("<div class=\"elementBlock\">" + ve.html + "</div>");
+            html += "<div class=\"elementBlock\">" + elementHTML(ve) + "</div>";
         });
-        views[currentView].elements.forEach(function(ve) {
+        viewsNode.innerHTML = html;
+        layoutGroups();
+        forEachElement(views[currentView].elements, function(ve) {
             if (ve.hasOwnProperty("graph"))
                 PhyphoxGraph.attachToDOM(ve);
         });
@@ -563,11 +715,19 @@
         body.classList.add("exclusive");
         var elem = document.getElementById("element"+i);
         elem.classList.add("exclusive");
+        //The groups on the way down to the element stay visible, their other children hide (style.css)
+        for (var node = elem.parentNode; node && node != viewsNode; node = node.parentNode)
+            if (node.classList.contains("groupElement"))
+                node.classList.add("exclusivePath");
         PhyphoxGraph.setInteractive(i, true);
     }
 
     function leaveExclusive() {
         body.classList.remove("exclusive");
+
+        var path = document.getElementsByClassName("exclusivePath");
+        while (path.length > 0)
+            path[0].classList.remove("exclusivePath");
 
         var elements = document.getElementsByClassName("exclusive");
         while (elements.length > 0) {
@@ -657,7 +817,7 @@
 
         //Graph elements are entirely built here from the configuration the app provides
         views.forEach(function(view) {
-            view.elements.forEach(function(ve) {
+            forEachElement(view.elements, function(ve) {
                 if (ve.hasOwnProperty("graph"))
                     PhyphoxGraph.prepareElement(ve);
             });
@@ -918,7 +1078,14 @@
                 nearest: null,
                 range: null, //last computed ranges {x: {min,max}, y: {min,max}, z: {min,max}}
                 isMap: cfg.datasets.length > 0 && cfg.datasets[0].style == "map",
-                aspectRatio: cfg.aspectRatio > 0 ? cfg.aspectRatio : 2.5
+                aspectRatio: cfg.aspectRatio > 0 ? cfg.aspectRatio : 2.5,
+                //plotLeft & co. (file format 1.21) pin the plot area to fractions of the element; null = automatic
+                plotArea: (cfg.plotLeft != null || cfg.plotTop != null || cfg.plotRight != null || cfg.plotBottom != null) ? {
+                    left: cfg.plotLeft != null ? cfg.plotLeft : 0,
+                    top: cfg.plotTop != null ? cfg.plotTop : 0,
+                    right: cfg.plotRight != null ? cfg.plotRight : 1,
+                    bottom: cfg.plotBottom != null ? cfg.plotBottom : 1
+                } : null
             };
             graphs[index] = g;
             if (g.systemTime)
@@ -957,7 +1124,9 @@
         function buildHTML(g) {
             var cfg = g.cfg;
             var labelSize = g.ve.labelSize ? g.ve.labelSize / 0.4 : 105;
-            var html = "<div style=\"font-size:" + labelSize + "%;\" class=\"graphElement\" id=\"element" + g.index + "\">";
+            var html = "<div style=\"font-size:" + labelSize + "%;\" class=\"graphElement" + (g.plotArea ? " fixedPlotArea" : "") + "\" id=\"element" + g.index + "\">";
+            //With a fixed plot area the fractions refer to the whole element, so the label row goes and the
+            //label is drawn into the top margin of the plot when there is room (see the plugin)
             html += "<span class=\"label\" onclick=\"toggleExclusive(" + g.index + ");\">" + escapeHTML(g.ve.label) + "</span>";
             if (g.isMap)
                 html += "<div class=\"warningIcon\" title=\"" + escapeHTML(graphStrings.colorMapWarning) + "\" onclick=\"alert(this.title)\"></div>";
@@ -1219,6 +1388,37 @@
          * Chart creation and update
          */
 
+        //Fixed plot area: the top and right margins are layout padding, the left and bottom margins the sizes of
+        //the axes (set in afterFit, which Chart.js runs on every layout, so a resize keeps the fractions)
+        function plotAreaPadding(g, canvas) {
+            var w = canvas ? canvas.clientWidth : 0, h = canvas ? canvas.clientHeight : 0;
+            return {top: Math.round(g.plotArea.top * h), right: Math.round((1 - g.plotArea.right) * w), left: 0, bottom: 0};
+        }
+
+        function fitFixedPlotArea(g, scale) {
+            var chart = scale.chart;
+            var font = 15 * scaleFactor;
+            var canvas = chart.canvas;
+            var w = canvas.clientWidth, h = canvas.clientHeight;
+            var pad = plotAreaPadding(g, canvas);
+            if (chart.options.layout.padding.top != pad.top || chart.options.layout.padding.right != pad.right) {
+                chart.options.layout.padding = pad;
+                setTimeout(function() { if (g.chart) g.chart.update("none"); }, 0);
+            }
+            var room;
+            if (scale.axis == "x") {
+                room = Math.round((1 - g.plotArea.bottom) * h);
+                scale.height = room;
+            } else {
+                room = Math.round(g.plotArea.left * w);
+                scale.width = room;
+            }
+            //Tics and the title are dropped where they do not fit
+            var rows = room / (font * 1.4);
+            scale.options.ticks.display = rows >= 1;
+            scale.options.title.display = rows >= 2 && scale.options.title.text != "";
+        }
+
         function scaleOptions(g, axis) {
             var cfg = g.cfg;
             var log = axis == "x" ? g.logX : g.logY;
@@ -1236,6 +1436,7 @@
             return {
                 type: log ? "logarithmic" : "linear",
                 position: axis == "x" ? "bottom" : "left",
+                afterFit: g.plotArea ? function(scale) { fitFixedPlotArea(g, scale); } : undefined,
                 grid: {
                     color: gridColor(),
                     tickLength: 0
@@ -1370,7 +1571,7 @@
                     maintainAspectRatio: false,
                     animation: false,
                     events: [],
-                    layout: {padding: {right: (g.isMap && cfg.showColorScale !== false) ? 70 * scaleFactor : 0}},
+                    layout: {padding: g.plotArea ? plotAreaPadding(g, canvas) : {right: (g.isMap && cfg.showColorScale !== false) ? 70 * scaleFactor : 0}},
                     plugins: {
                         legend: {display: false},
                         tooltip: {enabled: false},
@@ -2018,7 +2219,7 @@
                 img.data[4*i] = Math.round(c1.r * (1 - inbetween) + c2.r * inbetween);
                 img.data[4*i+1] = Math.round(c1.g * (1 - inbetween) + c2.g * inbetween);
                 img.data[4*i+2] = Math.round(c1.b * (1 - inbetween) + c2.b * inbetween);
-                img.data[4*i+3] = 255;
+                img.data[4*i+3] = Math.round(255 * (c1.a * (1 - inbetween) + c2.a * inbetween));
             }
             mapctx.putImageData(img, 0, 0);
 
@@ -2062,14 +2263,14 @@
             var barWidth = 12 * scaleFactor;
             var left = area.right + 10 * scaleFactor;
             var top = area.top, height = area.bottom - area.top;
-            if (height < 10)
+            if (height < 10 || chart.width - area.right < 30 * scaleFactor) //a fixed plot area may leave no room for the bar
                 return;
             ctx.save();
             var grad = ctx.createLinearGradient(0, area.bottom, 0, area.top);
             if (interpolate) {
                 for (var i = 0; i < colorScale.length; i++) {
                     var c = colorScale[i];
-                    grad.addColorStop(i / (colorScale.length - 1), "rgb(" + c.r + "," + c.g + "," + c.b + ")");
+                    grad.addColorStop(i / (colorScale.length - 1), rgbString(c));
                 }
             } else {
                 var n = colorScale.length - 1;
@@ -2077,8 +2278,8 @@
                     var c = colorScale[i + (i == n - 1 ? 1 : 0)];
                     //Stepped scale: each interval takes one color
                     var lo = colorScale[i], hi = colorScale[i + 1];
-                    var s = "rgb(" + lo.r + "," + lo.g + "," + lo.b + ")";
-                    var e = "rgb(" + hi.r + "," + hi.g + "," + hi.b + ")";
+                    var s = rgbString(lo);
+                    var e = rgbString(hi);
                     grad.addColorStop(i / n, s);
                     grad.addColorStop((i + 0.5) / n - 0.0001, s);
                     grad.addColorStop((i + 0.5) / n, e);
@@ -2227,9 +2428,27 @@
                 if (g) {
                     drawPicks(chart, g);
                     drawStatus(chart, g);
+                    if (g.plotArea)
+                        drawTitle(chart, g);
                 }
             }
         });
+
+        //With a fixed plot area the label is drawn into the top margin, if there is room for it
+        function drawTitle(chart, g) {
+            var area = chart.chartArea;
+            var font = 15 * scaleFactor;
+            if (area.top < font * 1.4 || !g.ve.label)
+                return;
+            var ctx = chart.ctx;
+            ctx.save();
+            ctx.fillStyle = frameColor();
+            ctx.font = "bold " + font + "px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom";
+            ctx.fillText(g.ve.label, (area.left + area.right) / 2, area.top - font * 0.3);
+            ctx.restore();
+        }
 
         //Read-only view of a graph's state for the test suite (test/webinterface.test.js)
         function state(index) {
@@ -2237,6 +2456,7 @@
             if (!g)
                 return null;
             return {
+                plotArea: g.plotArea,
                 status: g.status,
                 mode: g.mode,
                 interactive: g.interactive,

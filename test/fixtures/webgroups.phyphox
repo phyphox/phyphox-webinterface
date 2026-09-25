@@ -1,0 +1,66 @@
+<phyphox xmlns="http://phyphox.org/xml" version="1.21" locale="en">
+    <!-- Web interface test fixture for view groups (file format 1.21): the "Groups" view of test/mock_server.js with
+         the same labels, buffer names and settings, so test/webinterface.test.js finds the same elements against the
+         mock and against an app serving this file. The images (face.png, needle.png next to this file) reach the app
+         only inside a zip container with the two PNGs in res/, as bare XML they show "Image not available". -->
+    <title>Web interface: groups</title>
+    <category>phyphox test</category>
+    <description>View groups, transforms, an alpha colour and a fixed plot area for the remote interface tests.</description>
+    <data-containers>
+        <container size="0">acc_time</container>
+        <container size="0">accX</container>
+        <container size="0">accY</container>
+        <container size="0">accZ</container>
+        <container size="0">hx</container>
+        <container size="0">hy</container>
+        <container size="1">value</container>
+        <container size="1">angle</container>
+        <container size="1">fade</container>
+    </data-containers>
+    <input>
+        <sensor type="accelerometer" rate="50">
+            <output component="x">accX</output>
+            <output component="y">accY</output>
+            <output component="z">accZ</output>
+            <output component="t">acc_time</output>
+        </sensor>
+    </input>
+    <analysis>
+        <append>
+            <input clear="false">accX</input>
+            <output>value</output>
+        </append>
+    </analysis>
+    <views>
+        <view label="Groups">
+            <horizontal>
+                <value label="Weight two" weight="2"><input>value</input></value>
+                <value label="Weight one"><input>value</input></value>
+                <vertical>
+                    <value label="Column a"><input>value</input></value>
+                    <value label="Column b"><input>value</input></value>
+                </vertical>
+            </horizontal>
+            <grid maxWidth="25" fillLastRow="true">
+                <graph label="Grid x" labelX="t" unitX="s" labelY="x" partialUpdate="true"><input axis="x">acc_time</input><input axis="y">accX</input></graph>
+                <graph label="Grid y" labelX="t" unitX="s" labelY="y" partialUpdate="true"><input axis="x">acc_time</input><input axis="y">accY</input></graph>
+                <graph label="Grid z" labelX="t" unitX="s" labelY="z" partialUpdate="true"><input axis="x">acc_time</input><input axis="y">accZ</input></graph>
+            </grid>
+            <stack>
+                <image src="face.png" />
+                <transform originX="0.5" originY="0.8">
+                    <input as="rotate" min="0" max="360" mapMin="0" mapMax="6.2832" clamp="true">angle</input>
+                    <input as="opacity">fade</input>
+                    <image src="needle.png" />
+                </transform>
+                <transform>
+                    <input as="scale" type="value">0.5</input>
+                    <value label="Percent" unit="%" precision="0"><input>value</input></value>
+                </transform>
+                <graph label="Overlay" labelX="bin" labelY="count" plotLeft="0.1" plotTop="0.1" plotRight="0.9" plotBottom="0.9" color="ff7e2280"><input axis="x">hx</input><input axis="y">hy</input></graph>
+            </stack>
+            <value label="Alpha value" color="ff7e2280"><input>value</input></value>
+        </view>
+    </views>
+    <export></export>
+</phyphox>
