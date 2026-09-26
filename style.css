@@ -329,6 +329,34 @@ ul {
     margin: 0 0.5%;
 }
 
+/* Labels in narrow columns (file format 1.21): verticalLayout puts the label on its own line above the control, both
+   full width and left-aligned; without a label span the control takes the whole row */
+.verticalLayout > .label {
+    display: block;
+    width: 99%;
+    text-align: left;
+}
+
+.verticalLayout > .value, .verticalLayout > select.value, .verticalLayout > input.value {
+    display: block;
+    width: 99%;
+    text-align: left;
+}
+
+.editElement.verticalLayout > input.value {
+    display: inline-block;
+    width: 40%;
+}
+
+.valueElement > .value:first-child, .switchElement > .value:first-child, .dropdownElement > .value:first-child, .sliderElement > .value:first-child {
+    width: 99%;
+    text-align: left;
+}
+
+.editElement > input.value:first-child {
+    margin-left: 0.5%;
+}
+
 .graphElement {
     display: block;
     width: 80%;
@@ -453,6 +481,14 @@ ul {
 .groupElement > * {
     box-sizing: border-box;
     min-width: 0;
+}
+
+/* A flex item's outer margins would add to its share of the row; inside a group the info's margins become padding */
+.groupElement > .infoElement {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 2%;
+    padding-right: 2%;
 }
 
 .group_vertical {

@@ -557,16 +557,16 @@
         });
     }) : null;
 
-    //A grid uses the smallest number of columns that keeps a column at or below maxWidth text line heights
-    //(the em of the element); the children are flex items of a wrapping row, so with fillLastRow the ones of
-    //an incomplete last row grow across it
+    //A grid uses the smallest number of columns that keeps a column at or below maxWidth text line heights (the em
+    //of the element) or, with maxWidthUnit "screen", multiples of the viewport's shorter side; the children are flex
+    //items of a wrapping row, so with fillLastRow the ones of an incomplete last row grow across it
     function layoutGrid(ve) {
         let node = nodeOf(ve);
         if (!node)
             return;
-        let em = parseFloat(getComputedStyle(node).fontSize) || 16;
+        let unit = ve.maxWidthUnit == "screen" ? Math.min(window.innerWidth, window.innerHeight) : (parseFloat(getComputedStyle(node).fontSize) || 16);
         let width = node.clientWidth;
-        let maxWidthPx = (ve.maxWidth > 0 ? ve.maxWidth : 25) * em;
+        let maxWidthPx = (ve.maxWidth > 0 ? ve.maxWidth : 25) * unit;
         let columns = Math.max(1, Math.ceil(width / maxWidthPx - 1e-6));
         ve.columns = columns;
         ve.elements.forEach(function(child) {
@@ -575,6 +575,16 @@
                 childNode.style.flex = (ve.fillLastRow ? "1" : "0") + " 0 " + (100 / columns) + "%";
         });
     }
+
+    //A screen-unit grid follows the viewport, which can change without the grid's own width changing
+    window.addEventListener("resize", function() {
+        if (!views[currentView])
+            return;
+        forEachElement(views[currentView].elements, function(ve) {
+            if (ve.elements && ve.type == "grid" && ve.maxWidthUnit == "screen")
+                layoutGrid(ve);
+        });
+    });
 
     function layoutGroups() {
         forEachElement(views[currentView].elements, function(ve) {
@@ -1127,7 +1137,8 @@
             var html = "<div style=\"font-size:" + labelSize + "%;\" class=\"graphElement" + (g.plotArea ? " fixedPlotArea" : "") + "\" id=\"element" + g.index + "\">";
             //With a fixed plot area the fractions refer to the whole element, so the label row goes and the
             //label is drawn into the top margin of the plot when there is room (see the plugin)
-            html += "<span class=\"label\" onclick=\"toggleExclusive(" + g.index + ");\">" + escapeHTML(g.ve.label) + "</span>";
+            if (g.ve.label) //no title row without a label (file format 1.21); a click on the plot still maximizes
+                html += "<span class=\"label\" onclick=\"toggleExclusive(" + g.index + ");\">" + escapeHTML(g.ve.label) + "</span>";
             if (g.isMap)
                 html += "<div class=\"warningIcon\" title=\"" + escapeHTML(graphStrings.colorMapWarning) + "\" onclick=\"alert(this.title)\"></div>";
             html += "<div class=\"graphToolbar\">";

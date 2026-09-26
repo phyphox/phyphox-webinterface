@@ -147,11 +147,29 @@ function base(over) {
     datasets: [], pickLabel: null, pickOutputs: []
   }, over);
 }
-function valueElement(label, index, buffer, unit, precision, color) {
+// The label span is only emitted with a label, the verticalLayout class on request (file format 1.21)
+const labelSpan = label => label ? `<span class="label">${label}</span>` : '';
+const layoutClass = (label, vertical) => (label && vertical) ? ' verticalLayout' : '';
+function valueElement(label, index, buffer, unit, precision, color, vertical) {
   return {label, index: String(index), updateMode: 'single', labelSize: '42',
-    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor" id="element${index}"><span class="label">${label}</span><span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
+    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor${layoutClass(label, vertical)}" id="element${index}">${labelSpan(label)}<span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
     dataCompleteFunction: `function() { var v = elementData[${index}].value; if (v === undefined) return; document.getElementById("element${index}").getElementsByClassName("valueNumber")[0].textContent = (v === null || isNaN(v)) ? "-" : v.toFixed(${precision}); }`,
     dataInput: [buffer], dataInputFunction: `function(data) { if (!data.hasOwnProperty("${buffer}")) return; var d = data["${buffer}"].data; elementData[${index}].value = d[d.length-1]; }`};
+}
+function editElement(label, index, buffer, unit, vertical) {
+  return {label, index: String(index), updateMode: 'input', labelSize: '42',
+    html: `<div style="font-size:105%;" class="editElement${layoutClass(label, vertical)}" id="element${index}">${labelSpan(label)}<input onchange="ajax('control?cmd=set&buffer=${buffer}&value='+this.value)" type="number" class="value" /><span class="unit">${unit}</span></div>`,
+    dataCompleteFunction: 'function() {}', dataInput: [buffer], dataInputFunction: 'function(data) {}'};
+}
+function toggleElement(label, index, buffer, vertical) {
+  return {label, index: String(index), updateMode: 'input', labelSize: '42',
+    html: `<div style="font-size:105%;" class="switchElement${layoutClass(label, vertical)}" id="element${index}">${labelSpan(label)}<input type="checkbox" class="value" id="radio${index}" ></input></div>`,
+    dataCompleteFunction: 'function() {}', dataInput: [buffer], dataInputFunction: 'function(data) {}'};
+}
+function infoElement(label, index) {
+  return {label, index: String(index), updateMode: 'none', labelSize: '42',
+    html: `<div style="font-size:89%;color:#ffffff;" class="infoElement adjustableColor" id="element${index}"><p>${label}</p></div>`,
+    dataCompleteFunction: 'function() {}'};
 }
 function imageElement(index, src) {
   return {label: '', index: String(index), updateMode: 'none', labelSize: '42',
@@ -218,7 +236,17 @@ const views = [
       graph('Grid x', 20, 'partial', ['accX', 'acc_time'], base({labelX: 't', unitX: 's', labelY: 'x', partialUpdate: true, datasets: [line('acc_time', 'accX')]})),
       graph('Grid y', 21, 'partial', ['accY', 'acc_time'], base({labelX: 't', unitX: 's', labelY: 'y', partialUpdate: true, datasets: [line('acc_time', 'accY')]})),
       graph('Grid z', 22, 'partial', ['accZ', 'acc_time'], base({labelX: 't', unitX: 's', labelY: 'z', partialUpdate: true, datasets: [line('acc_time', 'accZ')]}))
-    ], {maxWidth: 25, fillLastRow: true}),
+    ], {maxWidth: 25, maxWidthUnit: 'text', fillLastRow: true}),
+    // labels in narrow columns: vertical layouts and label-less elements
+    group('horizontal', [
+      valueElement('Frequency', 28, 'value', 'Hz', 2, null, true),
+      editElement('Length', 29, 'value', 'm', true),
+      toggleElement('Run', 30, 'value', true),
+      valueElement('', 31, 'value', 'Hz', 2),
+      toggleElement('', 32, 'value')
+    ]),
+    // one column while the viewport is taller than wide, two in landscape
+    group('grid', [infoElement('screen unit a', 33), infoElement('screen unit b', 34)], {maxWidth: 1, maxWidthUnit: 'screen', fillLastRow: false}),
     group('stack', [
       imageElement(23, 'face.png'),
       group('transform', [imageElement(24, 'needle.png')], {originX: 0.5, originY: 0.8, transformInputs: [

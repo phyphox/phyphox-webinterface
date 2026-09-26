@@ -41,10 +41,21 @@
                     <value label="Column b"><input>value</input></value>
                 </vertical>
             </horizontal>
-            <grid maxWidth="25" fillLastRow="true">
+            <grid maxWidth="25" maxWidthUnit="text" fillLastRow="true">
                 <graph label="Grid x" labelX="t" unitX="s" labelY="x" partialUpdate="true"><input axis="x">acc_time</input><input axis="y">accX</input></graph>
                 <graph label="Grid y" labelX="t" unitX="s" labelY="y" partialUpdate="true"><input axis="x">acc_time</input><input axis="y">accY</input></graph>
                 <graph label="Grid z" labelX="t" unitX="s" labelY="z" partialUpdate="true"><input axis="x">acc_time</input><input axis="y">accZ</input></graph>
+            </grid>
+            <horizontal>
+                <value label="Frequency" unit="Hz" verticalLayout="true"><input>value</input></value>
+                <edit label="Length" unit="m" verticalLayout="true"><output>value</output></edit>
+                <toggle label="Run" verticalLayout="true"><output>value</output></toggle>
+                <value unit="Hz"><input>value</input></value>
+                <toggle><output>value</output></toggle>
+            </horizontal>
+            <grid maxWidth="1" maxWidthUnit="screen">
+                <info label="screen unit a" />
+                <info label="screen unit b" />
             </grid>
             <stack>
                 <image src="face.png" />

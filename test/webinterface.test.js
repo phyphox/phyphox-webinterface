@@ -615,7 +615,8 @@ async function requireView(t, name) {
 test('view groups: a horizontal splits the row by weight, a grid picks its columns from the width, a stack shares one rectangle', async t => {
   if (!(await requireView(t, 'Groups'))) return;
   // horizontal: weights 2, 1, 1 -> the first child is twice as wide, all are centred on one row
-  const row = await rects('#views .group_horizontal > *');
+  //the first horizontal of the view (weights 2, 1, 1)
+  const row = await page.evaluate(() => Array.from(document.querySelector('#views .group_horizontal').children).map(el => { const r = el.getBoundingClientRect(); return {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height}; }));
   assert.equal(row.length, 3);
   near(row[0].width / row[1].width, 2, 0.1, 'weight 2 vs 1');
   near(row[1].width, row[2].width, 2, 'equal weights');
@@ -778,5 +779,41 @@ test('colours with an alpha byte keep it on elements and datasets, in dark and i
     assert.notEqual(c, '#ff7e2280');
   }
   await page.evaluate(() => toggleBrightMode());
+  assertNoErrors();
+});
+
+test('labels in narrow columns: verticalLayout stacks the label above the control, a missing label frees the row, a screen-unit grid follows the viewport', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  const byLabel = label => page.evaluate(label => { let f = null; (function walk(es) { es.forEach(ve => { if (ve.elements) walk(ve.elements); else if (ve.label === label && f === null) f = ve.index; }); })(views[currentView].elements); return f; }, label);
+  for (const label of ['Frequency', 'Length', 'Run']) {
+    const idx = await byLabel(label);
+    if (idx === null) { t.skip(`no "${label}" element`); return; }
+    const el = await rect(`#element${idx}`);
+    const lab = await rect(`#element${idx} > .label`);
+    const val = await rect(`#element${idx} > .value`);
+    assert.ok(await page.evaluate(i => document.getElementById('element' + i).classList.contains('verticalLayout'), idx), label + ' has the class');
+    near(lab.width, el.width, el.width * 0.03, label + ': label spans the element');
+    assert.ok(val.top >= lab.bottom - 1, label + ': control below the label');
+    near(lab.left, el.left, 3, label + ': label left-aligned');
+    assert.equal(await page.evaluate(i => getComputedStyle(document.querySelector('#element' + i + ' > .label')).textAlign, idx), 'left');
+  }
+  // without a label: no span, the control takes the row
+  const row = await page.evaluate(() => Array.from(document.querySelectorAll('#views .group_horizontal')).map(h => Array.from(h.children).map(c => ({cls: c.className, hasLabel: !!c.querySelector(':scope > .label'), width: c.getBoundingClientRect().width, valueWidth: (c.querySelector(':scope > .value') || c).getBoundingClientRect().width}))));
+  const narrow = row.find(r => r.length === 5);
+  assert.ok(narrow, 'the five-element horizontal exists');
+  assert.equal(narrow[3].hasLabel, false, 'value without a label has no span');
+  assert.equal(narrow[4].hasLabel, false, 'toggle without a label has no span');
+  near(narrow[3].valueWidth, narrow[3].width, narrow[3].width * 0.03, 'value takes the row');
+  // screen unit: one column in portrait, two in landscape (in the one-column page layout, where the grid spans the viewport;
+  // the phone layout would keep the blocks at 57vh)
+  const columns = () => page.evaluate(() => { const g = document.querySelectorAll('#views .group_grid')[1]; const c = Array.from(g.children).map(x => Math.round(x.getBoundingClientRect().top)); return c.filter(t => t === c[0]).length; });
+  await page.evaluate(() => switchColumns(1));
+  await sleep(400);
+  await page.setViewport({width: 900, height: 1400, deviceScaleFactor: 1});
+  await sleep(500);
+  assert.equal(await columns(), 1, 'portrait: one column');
+  await page.setViewport({width: 1400, height: 900, deviceScaleFactor: 1});
+  await sleep(500);
+  assert.equal(await columns(), 2, 'landscape: two columns');
   assertNoErrors();
 });

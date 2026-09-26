@@ -100,7 +100,7 @@ number in document order across the whole tree, so `element<index>` and
 | `type` | `vertical`, `horizontal`, `grid`, `stack` or `transform` |
 | `elements` | The children, leaves or groups |
 | `weight` | On every direct child (leaf or group) of a `horizontal`: its share of the row (default 1); absent elsewhere |
-| `maxWidth`, `fillLastRow` | `grid` only: the largest column width in text line heights (`em` of the element), and whether an incomplete last row is split among its children |
+| `maxWidth`, `maxWidthUnit`, `fillLastRow` | `grid` only: the largest column width, its unit (`"text"` = text line heights, the `em` of the element; `"screen"` = multiples of the shorter side of the browser viewport), and whether an incomplete last row is split among its children |
 | `originX`, `originY` | `transform` only: the origin of scaling and rotation as fractions of the wrapped element (default 0.5) |
 | `transformInputs` | `transform` only: array of `{"as": "scale"/"scaleX"/"scaleY"/"translateX"/"translateY"/"rotate"/"opacity", "buffer": name or null, "value": number or null, "min", "max", "mapMin", "mapMax", "clamp"}`; the property is `mapMin + (v - min) * (mapMax - mapMin) / (max - min)` of the buffer's last value (or the constant), limited to the map range with `clamp`, and keeps its neutral value while the buffer is empty, the value is not finite or `min == max`. Rotation is in radians, clockwise; lengths are fractions of the wrapped element's own size; the properties compose as scale, then rotation, then translation about the origin |
 | `visibilityInput` | Optional, as on a leaf: hides the whole group |
@@ -119,6 +119,12 @@ A `transform` has exactly one child. Each leaf element carries
 | `dataCompleteFunction` | A JavaScript function `function()` called after all input functions of the view |
 | `visibilityInput` | Optional buffer name whose last value (> 0) controls the element's visibility |
 | `graph` | Optional graph configuration object (below). When present, the interface builds html, dataInputFunction and dataCompleteFunction itself and ignores the ones provided |
+
+Labels (file format 1.21): the `html` of a value, edit, toggle (`switchElement`), dropdown and
+slider element contains its `<span class="label">` only when the element has a label - without
+one the control takes the whole row - and carries the class `verticalLayout` on the element's
+`div` when the experiment asks for the label above the control. A graph without a label has no
+title row; the camera element omits its label span likewise.
 
 The two function entries are emitted as JavaScript source, which is why the view layout is not
 strictly JSON. Elements that describe themselves purely with data, like the graph, are the
