@@ -782,6 +782,92 @@ test('colours with an alpha byte keep it on elements and datasets, in dark and i
   assertNoErrors();
 });
 
+test('align at full width and spacing between visible children (file format 1.21)', async t => {
+  if (!(await requireView(t, 'Groups'))) return;
+  const byLabel = label => page.evaluate(label => { let f = null; (function walk(es) { es.forEach(ve => { if (ve.elements) walk(ve.elements); else if (ve.label === label && f === null) f = ve.index; }); })(views[currentView].elements); return f; }, label);
+  const textAlign = sel => page.evaluate(sel => getComputedStyle(document.querySelector(sel)).textAlign, sel);
+  const classes = idx => page.evaluate(i => document.getElementById('element' + i).className, idx);
+  // the spaced horizontal is the one with six children; without it the served experiment predates the attributes
+  const spaced = await page.evaluate(() => { const h = Array.from(document.querySelectorAll('#views .group_horizontal')).find(h => h.children.length === 6); return h ? {gap: getComputedStyle(h).gap, em: parseFloat(getComputedStyle(h).fontSize), children: Array.from(h.children).map(c => c.id)} : null; });
+  if (!spaced) { t.skip('no spaced horizontal in the served experiment'); return; }
+
+  // value: label line and value text centred, the value still spanning the element
+  const centred = await byLabel('Centred');
+  assert.match(await classes(centred), /verticalLayout alignCenter/, 'value carries both classes');
+  assert.equal(await textAlign(`#element${centred} > .label`), 'center');
+  assert.equal(await textAlign(`#element${centred} > .value`), 'center');
+  const cEl = await rect(`#element${centred}`), cVal = await rect(`#element${centred} > .value`);
+  near(cVal.width, cEl.width, cEl.width * 0.03, 'the centred value spans the element');
+  // edit: label right, the field and its unit pushed to the right end as a line, the field's own text untouched
+  const right = await byLabel('Right');
+  assert.match(await classes(right), /verticalLayout alignRight/);
+  assert.equal(await textAlign(`#element${right} > .label`), 'right');
+  const rEl = await rect(`#element${right}`), rUnit = await rect(`#element${right} > .unit`), rField = await rect(`#element${right} > input.value`);
+  assert.ok(rEl.right - rUnit.right <= rEl.width * 0.03, `unit at the right end: ${rUnit.right} vs ${rEl.right}`);
+  assert.ok(rField.left > rEl.left + rEl.width * 0.3, 'the field moved right with its unit');
+  assert.notEqual(await textAlign(`#element${right} > input.value`), 'right', 'the field keeps its own text alignment');
+  // toggle: the checkbox sits at the right end, at its own size
+  const run = await byLabel('Run right');
+  assert.match(await classes(run), /verticalLayout alignRight/);
+  const tEl = await rect(`#element${run}`), tBox = await rect(`#element${run} > input.value`);
+  assert.ok(tEl.right - tBox.right <= tEl.width * 0.03, `checkbox at the right end: ${tBox.right} vs ${tEl.right}`);
+  assert.ok(tBox.width < 40, 'the checkbox keeps its own size');
+  // without a label align applies on its own: the value text centred, the checkbox in the middle
+  const bareValue = spaced.children[3], bareToggle = spaced.children[4];
+  assert.match(await classes(bareValue.substring(7)), /alignCenter/);
+  assert.doesNotMatch(await classes(bareValue.substring(7)), /verticalLayout/);
+  assert.equal(await textAlign(`#${bareValue} > .value`), 'center');
+  const bEl = await rect(`#${bareToggle}`), bBox = await rect(`#${bareToggle} > input.value`);
+  near((bBox.left + bBox.right) / 2, (bEl.left + bEl.right) / 2, 3, 'the bare checkbox is centred');
+  // left adds nothing
+  const left = await byLabel('Left');
+  assert.doesNotMatch(await classes(left), /align/);
+  assert.equal(await textAlign(`#element${left} > .label`), 'left');
+
+  // spacing: one em between neighbours, none at the edges, the six equal weights share what the gaps leave
+  const em = spaced.em;
+  assert.equal(spaced.gap, `${em}px`, 'the gap is one text line of the group');
+  const hSel = '#views .group_horizontal:has(> :nth-child(6))';
+  let row = await rect(hSel);
+  let kids = await rects(hSel + ' > *');
+  assert.equal(kids.length, 6);
+  near(kids[0].left, row.left, 1, 'no gap at the left edge');
+  near(kids[5].right, row.right, 1, 'no gap at the right edge');
+  for (let i = 1; i < 6; i++) near(kids[i].left - kids[i - 1].right, em, 1, `gap before child ${i}`);
+  kids.forEach((k, i) => near(k.width, (row.width - 5 * em) / 6, 1.5, `child ${i} takes an equal share of the rest`));
+  // a hidden child takes no gap either: hide the second the way the interface does (display none)
+  await page.evaluate(sel => { document.querySelector(sel).children[1].style.display = 'none'; }, hSel);
+  kids = await rects(hSel + ' > *');
+  near(kids[2].left - kids[0].right, em, 1, 'one gap where the hidden child was');
+  near(kids[0].width, (row.width - 4 * em) / 5, 1.5, 'the remaining five share the rest');
+  await page.evaluate(sel => { document.querySelector(sel).children[1].style.display = ''; }, hSel);
+  // vertical: half a line between the rows' margin boxes (the infos keep their own 1 % margins)
+  const vSel = '#views .group_vertical[style*="gap"]';
+  const vKids = await page.evaluate(sel => Array.from(document.querySelector(sel).children).map(c => { const r = c.getBoundingClientRect(), cs = getComputedStyle(c); return {top: r.top - parseFloat(cs.marginTop), bottom: r.bottom + parseFloat(cs.marginBottom)}; }), vSel);
+  assert.equal(vKids.length, 2, 'the spaced vertical');
+  const vEm = await page.evaluate(sel => parseFloat(getComputedStyle(document.querySelector(sel)).fontSize), vSel);
+  near(vKids[1].top - vKids[0].bottom, 0.5 * vEm, 1, 'half a line between the rows');
+  const vRect = await rect(vSel);
+  near(vKids[0].top, vRect.top, 1, 'no gap at the top');
+  near(vKids[1].bottom, vRect.bottom, 1, 'no gap at the bottom');
+  // grid: the column count counts the gaps, the columns share the rest, rows are one gap apart
+  const gSel = '#views .group_grid[style*="gap"]';
+  const g = await page.evaluate(sel => { const n = document.querySelector(sel); const ve = n.phyphoxGroup; return {width: n.clientWidth, em: parseFloat(getComputedStyle(n).fontSize), columns: ve.columns, maxWidth: ve.maxWidth, spacing: ve.spacing}; }, gSel);
+  const gapPx = g.spacing * g.em;
+  const expected = Math.max(1, Math.ceil((g.width + gapPx) / (g.maxWidth * g.em + gapPx) - 1e-6));
+  assert.equal(g.columns, expected, `columns counted with the gap (grid ${g.width}px, em ${g.em})`);
+  const gKids = await rects(gSel + ' > *');
+  const firstRow = gKids.filter(k => Math.round(k.top) === Math.round(gKids[0].top));
+  assert.equal(firstRow.length, Math.min(expected, 3), 'children on the first row');
+  for (let i = 1; i < firstRow.length; i++) near(firstRow[i].left - firstRow[i - 1].right, gapPx, 1, `column gap before child ${i}`);
+  firstRow.forEach((k, i) => near(k.width, (g.width - (firstRow.length - 1) * gapPx) / firstRow.length, 1.5, `column ${i} shares the rest`));
+  if (firstRow.length < 3) {
+    near(gKids[firstRow.length].top - gKids[0].bottom, gapPx, 1, 'a row gap');
+    if (expected === 2) near(gKids[2].width, g.width, 1, 'fillLastRow: the lone child of the last row takes the whole width');
+  }
+  assertNoErrors();
+});
+
 test('labels in narrow columns: verticalLayout stacks the label above the control, a missing label frees the row, a screen-unit grid follows the viewport', async t => {
   if (!(await requireView(t, 'Groups'))) return;
   const byLabel = label => page.evaluate(label => { let f = null; (function walk(es) { es.forEach(ve => { if (ve.elements) walk(ve.elements); else if (ve.label === label && f === null) f = ve.index; }); })(views[currentView].elements); return f; }, label);

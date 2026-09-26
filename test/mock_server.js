@@ -147,23 +147,25 @@ function base(over) {
     datasets: [], pickLabel: null, pickOutputs: []
   }, over);
 }
-// The label span is only emitted with a label, the verticalLayout class on request (file format 1.21)
+// The label span is only emitted with a label, the verticalLayout class on request, and alignCenter/alignRight where
+// align applies: with verticalLayout and a label, or without a label (file format 1.21, readme.md "The view layout")
 const labelSpan = label => label ? `<span class="label">${label}</span>` : '';
-const layoutClass = (label, vertical) => (label && vertical) ? ' verticalLayout' : '';
-function valueElement(label, index, buffer, unit, precision, color, vertical) {
+const alignClass = align => align === 'center' ? ' alignCenter' : (align === 'right' ? ' alignRight' : '');
+const layoutClass = (label, vertical, align) => ((label && vertical) ? ' verticalLayout' : '') + ((!label || vertical) ? alignClass(align) : '');
+function valueElement(label, index, buffer, unit, precision, color, vertical, align) {
   return {label, index: String(index), updateMode: 'single', labelSize: '42',
-    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor${layoutClass(label, vertical)}" id="element${index}">${labelSpan(label)}<span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
+    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
     dataCompleteFunction: `function() { var v = elementData[${index}].value; if (v === undefined) return; document.getElementById("element${index}").getElementsByClassName("valueNumber")[0].textContent = (v === null || isNaN(v)) ? "-" : v.toFixed(${precision}); }`,
     dataInput: [buffer], dataInputFunction: `function(data) { if (!data.hasOwnProperty("${buffer}")) return; var d = data["${buffer}"].data; elementData[${index}].value = d[d.length-1]; }`};
 }
-function editElement(label, index, buffer, unit, vertical) {
+function editElement(label, index, buffer, unit, vertical, align) {
   return {label, index: String(index), updateMode: 'input', labelSize: '42',
-    html: `<div style="font-size:105%;" class="editElement${layoutClass(label, vertical)}" id="element${index}">${labelSpan(label)}<input onchange="ajax('control?cmd=set&buffer=${buffer}&value='+this.value)" type="number" class="value" /><span class="unit">${unit}</span></div>`,
+    html: `<div style="font-size:105%;" class="editElement${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<input onchange="ajax('control?cmd=set&buffer=${buffer}&value='+this.value)" type="number" class="value" /><span class="unit">${unit}</span></div>`,
     dataCompleteFunction: 'function() {}', dataInput: [buffer], dataInputFunction: 'function(data) {}'};
 }
-function toggleElement(label, index, buffer, vertical) {
+function toggleElement(label, index, buffer, vertical, align) {
   return {label, index: String(index), updateMode: 'input', labelSize: '42',
-    html: `<div style="font-size:105%;" class="switchElement${layoutClass(label, vertical)}" id="element${index}">${labelSpan(label)}<input type="checkbox" class="value" id="radio${index}" ></input></div>`,
+    html: `<div style="font-size:105%;" class="switchElement${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<input type="checkbox" class="value" id="radio${index}" ></input></div>`,
     dataCompleteFunction: 'function() {}', dataInput: [buffer], dataInputFunction: 'function(data) {}'};
 }
 function infoElement(label, index) {
@@ -247,6 +249,17 @@ const views = [
     ]),
     // one column while the viewport is taller than wide, two in landscape
     group('grid', [infoElement('screen unit a', 33), infoElement('screen unit b', 34)], {maxWidth: 1, maxWidthUnit: 'screen', fillLastRow: false}),
+    // align at full width, and a spacing of one text line between the six children
+    group('horizontal', [
+      valueElement('Centred', 35, 'value', 'Hz', 2, null, true, 'center'),
+      editElement('Right', 36, 'value', 'm', true, 'right'),
+      toggleElement('Run right', 37, 'value', true, 'right'),
+      valueElement('', 38, 'value', 'Hz', 2, null, false, 'center'),
+      toggleElement('', 39, 'value', false, 'center'),
+      valueElement('Left', 40, 'value', 'Hz', 2, null, true, 'left')
+    ], {spacing: 1}),
+    group('vertical', [infoElement('spaced a', 41), infoElement('spaced b', 42)], {spacing: 0.5}),
+    group('grid', [infoElement('gap a', 43), infoElement('gap b', 44), infoElement('gap c', 45)], {maxWidth: 10, maxWidthUnit: 'text', fillLastRow: true, spacing: 1}),
     group('stack', [
       imageElement(23, 'face.png'),
       group('transform', [imageElement(24, 'needle.png')], {originX: 0.5, originY: 0.8, transformInputs: [

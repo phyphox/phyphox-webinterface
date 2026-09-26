@@ -101,6 +101,7 @@ number in document order across the whole tree, so `element<index>` and
 | `elements` | The children, leaves or groups |
 | `weight` | On every direct child (leaf or group) of a `horizontal`: its share of the row (default 1); absent elsewhere |
 | `maxWidth`, `maxWidthUnit`, `fillLastRow` | `grid` only: the largest column width, its unit (`"text"` = text line heights, the `em` of the element; `"screen"` = multiples of the shorter side of the browser viewport), and whether an incomplete last row is split among its children |
+| `spacing` | `vertical`, `horizontal` and `grid`: the gap between adjacent visible children in text line heights (the `em` of the group), default 0. The interface renders it as the flex `gap` of the container (a `vertical` with a spacing becomes a flex column; the flush default stays a block), so there is none at the outer edges or next to a hidden child, and it sits between the children's margin boxes; a `horizontal` takes the gaps off the width before the weights share it, and a `grid` counts them in its column count (the smallest n with (width - (n-1)·spacing) / n <= maxWidth) and lets the columns share the rest |
 | `originX`, `originY` | `transform` only: the origin of scaling and rotation as fractions of the wrapped element (default 0.5) |
 | `transformInputs` | `transform` only: array of `{"as": "scale"/"scaleX"/"scaleY"/"translateX"/"translateY"/"rotate"/"opacity", "buffer": name or null, "value": number or null, "min", "max", "mapMin", "mapMax", "clamp"}`; the property is `mapMin + (v - min) * (mapMax - mapMin) / (max - min)` of the buffer's last value (or the constant), limited to the map range with `clamp`, and keeps its neutral value while the buffer is empty, the value is not finite or `min == max`. Rotation is in radians, clockwise; lengths are fractions of the wrapped element's own size; the properties compose as scale, then rotation, then translation about the origin |
 | `visibilityInput` | Optional, as on a leaf: hides the whole group |
@@ -125,6 +126,14 @@ slider element contains its `<span class="label">` only when the element has a l
 one the control takes the whole row - and carries the class `verticalLayout` on the element's
 `div` when the experiment asks for the label above the control. A graph without a label has no
 title row; the camera element omits its label span likewise.
+
+The `align` attribute of those five elements becomes the class `alignCenter` or `alignRight` on
+the same `div`, next to `verticalLayout`; `left` adds nothing. The app emits the class only where
+the attribute applies - with `verticalLayout` and a label, or without a label, and on a slider
+only with `showValue` - so the stylesheet needs no knowledge of the layout: it aligns the label
+and the text of the control, positions the edit field with its unit as a line, and places the
+checkbox. The info element's own `align` is not a class but an inline `text-align` (`start`,
+`center` or `end`) in the `style` of its `div`.
 
 The two function entries are emitted as JavaScript source, which is why the view layout is not
 strictly JSON. Elements that describe themselves purely with data, like the graph, are the

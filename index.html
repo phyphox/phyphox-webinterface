@@ -536,14 +536,25 @@
         });
     }
 
+    //The gap between a group's children in text line heights (the em of the group), 0 when absent or negative
+    function groupSpacing(ve) {
+        return (ve.spacing > 0) ? ve.spacing : 0;
+    }
+
     //The markup of a leaf, or of a group with its children. Groups are plain containers styled by their class;
-    //the per-child styles (weights, grid columns) are applied by layoutGroups once the nodes exist.
+    //the per-child styles (weights, grid columns) are applied by layoutGroups once the nodes exist. A spacing
+    //becomes the flex gap, which only separates rendered children: no gap at the edges or next to a hidden child.
     function elementHTML(ve) {
         if (!ve.elements)
             return ve.html;
         let style = "";
         if (ve.type == "transform")
             style = "transform-origin: " + (100 * (ve.originX != null ? ve.originX : 0.5)) + "% " + (100 * (ve.originY != null ? ve.originY : 0.5)) + "%;";
+        if (groupSpacing(ve) > 0 && (ve.type == "vertical" || ve.type == "horizontal" || ve.type == "grid")) {
+            if (ve.type == "vertical")
+                style += "display: flex; flex-direction: column;"; //a block container has no gap; the flush default stays a block
+            style += "gap: " + groupSpacing(ve) + "em;";
+        }
         let html = "<div class=\"groupElement group_" + ve.type + "\" id=\"" + ve.groupId + "\" style=\"" + style + "\">";
         ve.elements.forEach(function(child) {
             html += elementHTML(child);
@@ -559,20 +570,25 @@
 
     //A grid uses the smallest number of columns that keeps a column at or below maxWidth text line heights (the em
     //of the element) or, with maxWidthUnit "screen", multiples of the viewport's shorter side; the children are flex
-    //items of a wrapping row, so with fillLastRow the ones of an incomplete last row grow across it
+    //items of a wrapping row, so with fillLastRow the ones of an incomplete last row grow across it. The spacing
+    //counts: n is the smallest number with (width - (n-1)·spacing) / n <= maxWidth, and the columns share what the
+    //gaps leave (the flex gap keeps a lone child of the last row from growing into a gap, too)
     function layoutGrid(ve) {
         let node = nodeOf(ve);
         if (!node)
             return;
-        let unit = ve.maxWidthUnit == "screen" ? Math.min(window.innerWidth, window.innerHeight) : (parseFloat(getComputedStyle(node).fontSize) || 16);
+        let em = parseFloat(getComputedStyle(node).fontSize) || 16;
+        let unit = ve.maxWidthUnit == "screen" ? Math.min(window.innerWidth, window.innerHeight) : em;
         let width = node.clientWidth;
         let maxWidthPx = (ve.maxWidth > 0 ? ve.maxWidth : 25) * unit;
-        let columns = Math.max(1, Math.ceil(width / maxWidthPx - 1e-6));
+        let spacingPx = groupSpacing(ve) * em;
+        let columns = Math.max(1, Math.ceil((width + spacingPx) / (maxWidthPx + spacingPx) - 1e-6));
         ve.columns = columns;
+        let basis = spacingPx > 0 ? "calc((100% - " + ((columns - 1) * spacingPx) + "px) / " + columns + ")" : (100 / columns) + "%";
         ve.elements.forEach(function(child) {
             let childNode = nodeOf(child);
             if (childNode)
-                childNode.style.flex = (ve.fillLastRow ? "1" : "0") + " 0 " + (100 / columns) + "%";
+                childNode.style.flex = (ve.fillLastRow ? "1" : "0") + " 0 " + basis;
         });
     }
 

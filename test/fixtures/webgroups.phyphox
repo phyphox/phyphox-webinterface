@@ -57,6 +57,23 @@
                 <info label="screen unit a" />
                 <info label="screen unit b" />
             </grid>
+            <horizontal spacing="1">
+                <value label="Centred" unit="Hz" verticalLayout="true" align="center"><input>value</input></value>
+                <edit label="Right" unit="m" verticalLayout="true" align="right"><output>value</output></edit>
+                <toggle label="Run right" verticalLayout="true" align="right"><output>value</output></toggle>
+                <value unit="Hz" align="center"><input>value</input></value>
+                <toggle align="center"><output>value</output></toggle>
+                <value label="Left" unit="Hz" verticalLayout="true" align="left"><input>value</input></value>
+            </horizontal>
+            <vertical spacing="0.5">
+                <info label="spaced a" />
+                <info label="spaced b" />
+            </vertical>
+            <grid maxWidth="10" fillLastRow="true" spacing="1">
+                <info label="gap a" />
+                <info label="gap b" />
+                <info label="gap c" />
+            </grid>
             <stack>
                 <image src="face.png" />
                 <transform originX="0.5" originY="0.8">

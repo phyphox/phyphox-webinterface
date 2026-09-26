@@ -357,6 +357,39 @@ ul {
     margin-left: 0.5%;
 }
 
+/* align (file format 1.21): the app adds alignCenter or alignRight to a value, edit, switch, dropdown or slider element
+   whose label and control take the full width (verticalLayout, or no label). A text control aligns its text, the edit
+   field and its unit are positioned as a line, the checkbox is placed; left is the layout above */
+.alignCenter > .label, .alignCenter > .value:not(input), .alignCenter > .value:first-child:not(input) {
+    text-align: center;
+}
+
+.alignRight > .label, .alignRight > .value:not(input), .alignRight > .value:first-child:not(input) {
+    text-align: right;
+}
+
+.editElement.alignCenter {
+    text-align: center;
+}
+
+.editElement.alignRight {
+    text-align: right;
+}
+
+.switchElement.alignCenter > input.value {
+    display: block;
+    width: auto;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.switchElement.alignRight > input.value {
+    display: block;
+    width: auto;
+    margin-left: auto;
+    margin-right: 0.5%;
+}
+
 .graphElement {
     display: block;
     width: 80%;
