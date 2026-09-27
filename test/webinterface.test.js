@@ -210,6 +210,8 @@ test('mouse: drag pans, shift+drag zooms into a box, wheel zooms, a flat shift+d
   const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
   if (idx === null) return;
   await startMeasuring(2);
+  await api('control?cmd=stop'); // static data: a growing auto range would widen the box zoom on a slow runner
+  await sleep(500);
   await maximize(idx);
   const initial = await scales(idx);
   assert.equal(await page.$eval(sel(idx, '.graphTool_reset'), b => b.disabled), true, 'reset disabled before any zoom');
@@ -279,8 +281,12 @@ test('followX: the configured window sits at the newest data from the first fram
   const idx = await requireGraph(t, 'Follow x (5 s)');
   if (idx === null) return;
   await startMeasuring(2);
-  const s = await scales(idx);
-  const newest = (await pointPos(idx, 0, -1)).dx;
+  // The window and the newest point in one JavaScript turn, or new data arrives in between (as in the follow test)
+  const {s, newest} = await page.evaluate(i => {
+    const c = Chart.getChart(document.querySelector('#element' + i + ' canvas'));
+    const d = c.data.datasets[0].data;
+    return {s: {x: [c.scales.x.min, c.scales.x.max], y: [c.scales.y.min, c.scales.y.max]}, newest: d[d.length - 1].x};
+  }, idx);
   assert.ok(Math.abs(width(s.x) - 5) < 1e-6, 'window width 5');
   assert.ok(Math.abs(s.x[1] - newest) < 0.2, 'anchored at the newest x');
   assert.deepEqual(s.y.map(v => Math.round(v)), [-15, 15], 'fixed y range');
