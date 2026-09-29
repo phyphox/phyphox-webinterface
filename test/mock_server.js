@@ -24,8 +24,8 @@ function createExperiment() {
   const buffers = {};
   const sizes = {};
   const buf = (name, size) => { buffers[name] = []; sizes[name] = size; };
-  ['acc_time', 'accX', 'accY', 'accZ', 'acc', 'xd', 'yd', 'hx', 'hy', 'fmap', 'tmap', 'fftmap', 'lx', 'ly', 'neverX', 'neverY', 'nanX', 'nanY'].forEach(n => buf(n, 0));
-  ['pickedX', 'assigned', 'pickedY', 'value', 'angle', 'fade'].forEach(n => buf(n, 1));
+  ['acc_time', 'accX', 'accY', 'accZ', 'acc', 'temp', 'xd', 'yd', 'hx', 'hy', 'fmap', 'tmap', 'fftmap', 'lx', 'ly', 'neverX', 'neverY', 'nanX', 'nanY'].forEach(n => buf(n, 0));
+  ['pickedX', 'assigned', 'pickedY', 'value', 'angle', 'fade', 'distance', 'height', 'length'].forEach(n => buf(n, 1));
 
   const push = (name, v) => {
     const b = buffers[name];
@@ -48,6 +48,10 @@ function createExperiment() {
     push('nanX', i);
     push('nanY', (i > 5 && i < 9) ? NaN : Math.sin(i / 3));
   }
+  // the unit elements start from the fixture's init values (webgraphs.phyphox)
+  push('distance', 1.5);
+  push('height', 2);
+  push('length', 0.5);
 
   function tick() {
     const now = Date.now();
@@ -59,6 +63,7 @@ function createExperiment() {
       push('accY', 3 * Math.sin(t * 0.7) * Math.cos(t * 3));
       push('accZ', -0.5 + 0.3 * Math.sin(t * 5) + ((t * 1000) % 7) * 0.02);
       push('acc', buffers.accX[buffers.accX.length - 1] ** 2);
+      push('temp', 20 + 2 * Math.sin(t * 0.5));
       push('value', buffers.accX[buffers.accX.length - 1]);
       if (Math.floor(t * 4) > state.mapRow) {
         state.mapRow = Math.floor(t * 4);
@@ -75,8 +80,12 @@ function createExperiment() {
   }
   const timer = setInterval(tick, 20);
 
-  function control(cmd) {
-    if (cmd === 'start' && !state.measuring) {
+  function control(cmd, query) {
+    if (cmd === 'set' && query && buffers[query.buffer]) {
+      //the edit element's GET form: replaces the buffer with the one value
+      buffers[query.buffer].length = 0;
+      push(query.buffer, Number(query.value));
+    } else if (cmd === 'start' && !state.measuring) {
       state.measuring = true;
       state.timeEvents.push({event: 'START', experimentTime: state.t, systemTime: Date.now() / 1000});
     } else if (cmd === 'stop' && state.measuring) {
@@ -84,7 +93,7 @@ function createExperiment() {
       state.timeEvents.push({event: 'PAUSE', experimentTime: state.t, systemTime: Date.now() / 1000});
     } else if (cmd === 'clear') {
       state.measuring = false;
-      for (const n of ['acc_time', 'accX', 'accY', 'accZ', 'acc', 'fmap', 'tmap', 'fftmap']) buffers[n].length = 0;
+      for (const n of ['acc_time', 'accX', 'accY', 'accZ', 'acc', 'temp', 'fmap', 'tmap', 'fftmap']) buffers[n].length = 0;
       state.t = 0;
       state.mapRow = 0;
       state.timeEvents.length = 0;
@@ -152,17 +161,33 @@ function base(over) {
 const labelSpan = label => label ? `<span class="label">${label}</span>` : '';
 const alignClass = align => align === 'center' ? ' alignCenter' : (align === 'right' ? ' alignRight' : '');
 const layoutClass = (label, vertical, align) => ((label && vertical) ? ' verticalLayout' : '') + ((!label || vertical) ? alignClass(align) : '');
+// unit: the text the legacy html shows, or a logical unit {id, text} (file format 1.21, readme.md "Value and edit
+// elements") which adds the "value"/"edit" configuration the interface renders itself
 function valueElement(label, index, buffer, unit, precision, color, vertical, align) {
-  return {label, index: String(index), updateMode: 'single', labelSize: '42',
-    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${unit}</span></span></div>`,
+  const logical = unit != null && typeof unit === 'object';
+  const text = logical ? unitText(unit) : unit;
+  const e = {label, index: String(index), updateMode: 'single', labelSize: '42',
+    html: `<div style="font-size:105%;color:#${color || 'ffffff'}" class="valueElement adjustableColor${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<span class="value"><span class="valueNumber">-</span> <span class="valueUnit">${text}</span></span></div>`,
     dataCompleteFunction: `function() { var v = elementData[${index}].value; if (v === undefined) return; document.getElementById("element${index}").getElementsByClassName("valueNumber")[0].textContent = (v === null || isNaN(v)) ? "-" : v.toFixed(${precision}); }`,
     dataInput: [buffer], dataInputFunction: `function(data) { if (!data.hasOwnProperty("${buffer}")) return; var d = data["${buffer}"].data; elementData[${index}].value = d[d.length-1]; }`};
+  if (logical)
+    e.value = {unit, precision, scientific: false, factor: unit.factor || 1, size: 1, format: 'float', positiveUnit: null, negativeUnit: null, map: []};
+  return e;
 }
 function editElement(label, index, buffer, unit, vertical, align) {
-  return {label, index: String(index), updateMode: 'input', labelSize: '42',
-    html: `<div style="font-size:105%;" class="editElement${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<input onchange="ajax('control?cmd=set&buffer=${buffer}&value='+this.value)" type="number" class="value" /><span class="unit">${unit}</span></div>`,
+  const logical = unit != null && typeof unit === 'object';
+  const text = logical ? unitText(unit) : unit;
+  const e = {label, index: String(index), updateMode: 'input', labelSize: '42',
+    html: `<div style="font-size:105%;" class="editElement${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<input onchange="ajax('control?cmd=set&buffer=${buffer}&value='+this.value)" type="number" class="value" /><span class="unit">${text}</span></div>`,
     dataCompleteFunction: 'function() {}', dataInput: [buffer], dataInputFunction: 'function(data) {}'};
+  if (logical)
+    e.edit = {unit: {id: unit.id, text: unit.text}, factor: 1, min: unit.min == null ? null : unit.min, max: unit.max == null ? null : unit.max, signed: true, decimal: true, default: unit.default == null ? null : unit.default};
+  return e;
 }
+// The English symbols of the unit ids the mock uses (the interface has the full table)
+const symbols = {meter: 'm', foot: 'ft', second: 's', meter_per_square_second: 'm/s²', degree_celsius: '°C'};
+const unitText = unit => unit.id != null ? symbols[unit.id] : (unit.text || '');
+const ref = (id, extra) => Object.assign({id, text: null}, extra || {});
 function toggleElement(label, index, buffer, vertical, align) {
   return {label, index: String(index), updateMode: 'input', labelSize: '42',
     html: `<div style="font-size:105%;" class="switchElement${layoutClass(label, vertical, align)}" id="element${index}">${labelSpan(label)}<input type="checkbox" class="value" id="radio${index}" ></input></div>`,
@@ -185,14 +210,14 @@ const line = (x, y, color, style) => ({x, y, z: null, style: style || 'lines', l
 const views = [
   {name: 'Graphs', elements: [
     graph('Acceleration (partial, 3 datasets)', 0, 'partial', ['accX', 'acc_time', 'accY', 'acc_time', 'accZ', 'acc_time'], base({
-      labelX: 't', unitX: 's', labelY: 'a', unitY: 'm/s²', unitYX: 'm/s³', partialUpdate: true,
+      labelX: 't', unitX: 's', labelY: 'a', unitY: 'm/s²', unitYX: 'm/s³', unitIdX: 'second', unitIdY: 'meter_per_square_second', partialUpdate: true,
       datasets: [line('acc_time', 'accX'), line('acc_time', 'accY', '#00ff00'), line('acc_time', 'accZ', '#0080ff', 'dots')]})),
     graph('Follow x (5 s)', 1, 'partial', ['accX', 'acc_time'], base({
       labelX: 't', unitX: 's', labelY: 'a', unitY: 'm/s²', followX: true, partialUpdate: true, minX: 0, maxX: 5,
       scaleMinX: 'fixed', scaleMaxX: 'fixed', scaleMinY: 'fixed', minY: -15, scaleMaxY: 'fixed', maxY: 15,
       datasets: [Object.assign(line('acc_time', 'accX'), {lineWidth: 2.0})]})),
     graph('Picker (dots)', 2, 'partial', ['acc', 'acc_time'], base({
-      labelX: 't', unitX: 's', labelY: 'a²', unitY: 'm²/s⁴', partialUpdate: true, pickLabel: 'Calibrate',
+      labelX: 't', unitX: 's', unitIdX: 'second', labelY: 'a²', unitY: 'm²/s⁴', partialUpdate: true, pickLabel: 'Calibrate',
       datasets: [line('acc_time', 'acc', '#ff7e22', 'dots')],
       pickOutputs: [
         {axis: 'x', buffer: 'pickedX', label: 'Calibration point', calBuffer: 'assigned', calLabel: 'Assigned wavelength in nm'},
@@ -201,6 +226,17 @@ const views = [
     valueElement('Picked x', 3, 'pickedX', 's', 3),
     valueElement('Assigned', 4, 'assigned', 'nm', 1),
     valueElement('Picked y', 5, 'pickedY', '', 3),
+    // logical units (file format 1.21): a value in @meter, one authored in @foot, an edit in @meter with limits, a graph
+    // with an affine (temperature) axis and one with the deprecated [[unit_short_second]], which is the same unit
+    valueElement('Distance', 46, 'distance', ref('meter'), 2),
+    valueElement('Height', 47, 'height', ref('foot'), 1),
+    editElement('Length', 48, 'length', ref('meter', {min: 0.1, max: 2.0, default: 0.5})),
+    graph('Temperature', 49, 'partial', ['temp', 'acc_time'], base({
+      labelX: 't', unitX: 's', labelY: 'T', unitY: '°C', unitIdX: 'second', unitIdY: 'degree_celsius', partialUpdate: true,
+      datasets: [line('acc_time', 'temp')]})),
+    graph('Deprecated placeholder', 50, 'partial', ['accX', 'acc_time'], base({
+      labelX: 't', unitX: 's', labelY: 'a', unitY: 'm/s²', unitIdX: 'second', unitIdY: 'meter_per_square_second', partialUpdate: true,
+      datasets: [line('acc_time', 'accX')]})),
     // mock-only graphs from here on
     graph('Spectrum (static)', 6, 'full', ['yd', 'xd'], base({
       labelX: 'pixel', unitX: '', labelY: 'intensity', unitY: 'a.u.',
@@ -289,6 +325,8 @@ function elementsJson(elements) {
     if (e.weight != null) s += ',"weight":' + e.weight;
     if (e.dataInput) s += ',"dataInput":' + JSON.stringify(e.dataInput) + ',"dataInputFunction":\n' + e.dataInputFunction + '\n';
     if (e.graph) s += ',"graph":' + JSON.stringify(e.graph);
+    if (e.value) s += ',"value":' + JSON.stringify(e.value);
+    if (e.edit) s += ',"edit":' + JSON.stringify(e.edit);
     s += '}';
   });
   return s;
@@ -304,14 +342,20 @@ function viewsJson() {
   return s + '\n];var clearGroups = [];';
 }
 
-const graphStrings = {panAndZoom: 'Pan and zoom', pick: 'Pick data', resetZoom: 'Reset zoom', follow: 'Follow new data', linearFit: 'Linear fit', logX: 'Logarithmic x axis', logY: 'Logarithmic y axis', systemTime: 'Convert to system time', point: 'Point', difference: 'Difference', slope: 'Slope', fit: 'Linear fit: y = a x + b', noData: 'No data', noValidData: 'No valid data', noDataInRange: 'No data in range', ok: 'OK', cancel: 'Cancel', invalidValue: 'Invalid value'};
+const graphStrings = {panAndZoom: 'Pan and zoom', pick: 'Pick data', resetZoom: 'Reset zoom', follow: 'Follow new data', linearFit: 'Linear fit', logX: 'Logarithmic x axis', logY: 'Logarithmic y axis', systemTime: 'Convert to system time', point: 'Point', difference: 'Difference', slope: 'Slope', fit: 'Linear fit: y = a x + b', noData: 'No data', noValidData: 'No valid data', noDataInRange: 'No data in range', ok: 'OK', cancel: 'Cancel', invalidValue: 'Invalid value', unit: 'Unit', unitExperimentDefault: 'experiment default', metric: 'Metric (SI)', imperial: 'Imperial / US customary', other: 'Other'};
+// The unit symbols as the app would send them translated; the mock sends the English ones of its units
+const unitStrings = {meter: 'm', foot: 'ft', second: 's', meter_per_square_second: 'm/s²', degree_celsius: '°C'};
 const translations = {title: 'Mock experiment', translationOK: 'OK', translationCancel: 'Cancel', clearConfirmTranslation: 'Clear data?', clearConfirmTranslationSelect: 'Select', exportTranslation: 'Export', switchToPhoneLayoutTranslation: 'Phone layout', switchColumns1Translation: '1 column', switchColumns2Translation: '2 columns', switchColumns3Translation: '3 columns', toggleBrightModeTranslation: 'Bright mode', fontSizeTranslation: 'Font size'};
 
-function indexHtml() {
+// unitSystem: the app's Unit system setting the page is served with ("experiment", "metric" or "imperial"); the
+// tests pick it with the query parameter unitSystem of /
+function indexHtml(unitSystemSetting) {
   const out = [];
   for (const line of fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').split('\n')) {
     if (line.includes('<!-- [[viewLayout]] -->')) out.push(viewsJson());
     else if (line.includes('<!-- [[graphStrings]] -->')) out.push('graphStrings = Object.assign(graphStrings, ' + JSON.stringify(graphStrings) + ');');
+    else if (line.includes('<!-- [[unitSystem]] -->')) out.push('var unitSystem = ' + JSON.stringify(unitSystemSetting || 'experiment') + ';');
+    else if (line.includes('<!-- [[unitStrings]] -->')) out.push('unitStrings = ' + JSON.stringify(unitStrings) + ';');
     else if (line.includes('<!-- [[viewOptions]] -->')) out.push(views.map(v => '<li>' + v.name + '</li>').join('\n'));
     else if (line.includes('<!-- [[exportFormatOptions]] -->')) out.push('<option value="0">CSV</option>');
     else out.push(line.replace(/<!-- \[\[(\w+)\]\] -->/g, (m, k) => translations[k] || m));
@@ -329,7 +373,7 @@ function start(port, log) {
       const send = (code, type, data) => { res.writeHead(code, {'Content-Type': type}); res.end(data); };
       const json = (code, obj) => send(code, 'application/json', JSON.stringify(obj));
       try {
-        if (u.pathname === '/') return send(200, 'text/html; charset=utf-8', indexHtml());
+        if (u.pathname === '/') return send(200, 'text/html; charset=utf-8', indexHtml(u.query.unitSystem));
         if (u.pathname === '/style.css') return send(200, 'text/css', fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8').replace(/###\w+###/g, PNG));
         if (u.pathname === '/logo') return send(200, 'image/png', fs.readFileSync(path.join(ROOT, 'phyphox_orange.png')));
         if (u.pathname === '/get') {
@@ -338,7 +382,7 @@ function start(port, log) {
         }
         if (u.pathname === '/time') return json(200, exp.state.timeEvents);
         if (u.pathname === '/control') {
-          exp.control(u.query.cmd);
+          exp.control(u.query.cmd, u.query);
           if (log) log('control ' + JSON.stringify(u.query));
           return json(200, {result: true});
         }

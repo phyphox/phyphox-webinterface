@@ -191,6 +191,11 @@ test('the served page embeds the graph configuration and the translated strings'
   assert.match(html, /graphStrings = Object\.assign\(graphStrings, \{/, 'graph strings block');
   assert.match(html, /"pickOutputs":\[\{"axis":"x","buffer":"pickedX"/, 'pick outputs of the picker graph');
   assert.match(html, /"followX":true/, 'followX of the follow graph');
+  assert.match(html, /"value":\{"unit":\{"id":"meter"/, 'value configuration with a logical unit');
+  assert.match(html, /"edit":\{"unit":\{"id":"meter"/, 'edit configuration with a logical unit');
+  assert.match(html, /"unitIdX":"second"/, 'unit ids of the graph axes');
+  assert.match(html, /var unitSystem = "/, 'unit system placeholder replaced');
+  assert.match(html, /unitStrings = \{/, 'unit strings placeholder replaced');
 });
 
 test('a partial-update graph keeps growing while measuring', async t => {
@@ -907,5 +912,273 @@ test('labels in narrow columns: verticalLayout stacks the label above the contro
   await page.setViewport({width: 1400, height: 900, deviceScaleFactor: 1});
   await sleep(500);
   assert.equal(await columns(), 2, 'landscape: two columns');
+  assertNoErrors();
+});
+
+// ---- units (file format 1.21): logical units, the Unit system setting and the unit dialog ----
+// The unit elements sit in the first view of the mock and of fixtures/webgraphs.phyphox; the mock serves the page for
+// a setting with /?unitSystem=..., which an app run cannot (it uses the phone's setting), so those tests are mock only.
+
+const elementByLabel = label => page.evaluate(label => { let f = null; (function walk(es) { es.forEach(ve => { if (ve.elements) walk(ve.elements); else if (ve.label === label && f === null) f = parseInt(ve.index); }); })(views[currentView].elements); return f; }, label);
+const unitState = idx => page.evaluate(i => PhyphoxUnits.state(i), idx);
+const valueText = idx => page.evaluate(i => { const e = document.getElementById('element' + i); return {number: e.querySelector('.valueNumber').textContent, unit: e.querySelector('.valueUnit').textContent}; }, idx);
+const editField = idx => page.evaluate(i => { const e = document.getElementById('element' + i); const f = e.querySelector('input.value'); return {value: f.value, min: f.getAttribute('min'), max: f.getAttribute('max'), unit: e.querySelector('.unit').textContent}; }, idx);
+const axisTitle = (idx, axis) => page.evaluate((i, a) => Chart.getChart(document.querySelector('#element' + i + ' canvas')).options.scales[a].title.text, idx, axis);
+const dialogChoices = () => page.evaluate(() => { const o = document.querySelector('.unitOverlay'); if (!o) return null; return {groups: Array.from(o.querySelectorAll('.unitGroup')).map(g => g.textContent), choices: Array.from(o.querySelectorAll('input[type=radio]')).map(r => ({id: r.value, checked: r.checked, label: r.parentNode.textContent}))}; });
+async function chooseUnit(id) {
+  await page.click(`.unitOverlay input[value="${id}"]`);
+  await sleep(400);
+}
+async function loadWithSetting(t, setting) {
+  if (DEVICE) { t.skip('the setting comes from the phone in an app run'); return false; }
+  await page.goto(BASE_URL + '?unitSystem=' + setting, {waitUntil: 'load'});
+  await sleep(500);
+  return true;
+}
+async function requireUnitElements(t) {
+  const idx = await elementByLabel('Distance');
+  if (idx === null) { t.skip('no unit elements in the served experiment'); return false; }
+  return true;
+}
+
+test('units: with the experiment setting every element shows the unit the file names', async t => {
+  if (!(await requireUnitElements(t))) return;
+  await startMeasuring(1);
+  const distance = await elementByLabel('Distance'), height = await elementByLabel('Height'), length = await elementByLabel('Length');
+  assert.deepEqual(await valueText(distance), {number: '1.50', unit: 'm'});
+  assert.deepEqual(await valueText(height), {number: '2.0', unit: 'ft'});
+  const field = await editField(length);
+  assert.equal(field.value, '0.5');
+  assert.equal(field.unit, 'm');
+  assert.equal(parseFloat(field.min), 0.1);
+  assert.equal(parseFloat(field.max), 2);
+  assert.deepEqual(await unitState(distance), {kind: 'value', convertible: true, unitId: 'meter', displayUnitId: 'meter', symbol: 'm'});
+  const acc = await graphByLabel('Acceleration (partial, 3 datasets)'), temp = await graphByLabel('Temperature');
+  assert.equal(await axisTitle(acc, 'x'), 't (s)');
+  assert.equal(await axisTitle(acc, 'y'), 'a (m/s²)');
+  assert.equal(await axisTitle(temp, 'y'), 'T (°C)');
+  assert.deepEqual((await state(acc)).displayUnit, {x: 'second', y: 'meter_per_square_second', z: null});
+  assertNoErrors();
+});
+
+test('units: the imperial setting converts metric units with a counterpart and leaves the rest', async t => {
+  if (!(await loadWithSetting(t, 'imperial'))) return;
+  await startMeasuring(1.5);
+  const distance = await elementByLabel('Distance'), height = await elementByLabel('Height'), length = await elementByLabel('Length');
+  // 1.5 m = 4.92 ft: the factor 3.28 keeps two decimals (precision rule)
+  assert.deepEqual(await valueText(distance), {number: '4.92', unit: 'ft'});
+  assert.deepEqual(await valueText(height), {number: '2.0', unit: 'ft'}, 'an imperial unit stays');
+  const field = await editField(length);
+  assert.equal(field.value, '1.64042', 'six significant digits in the field');
+  assert.equal(field.unit, 'ft');
+  near(parseFloat(field.min), 0.328084, 1e-5, 'converted min');
+  near(parseFloat(field.max), 6.56168, 1e-5, 'converted max');
+  const acc = await graphByLabel('Acceleration (partial, 3 datasets)'), temp = await graphByLabel('Temperature'), dep = await graphByLabel('Deprecated placeholder');
+  assert.equal(await axisTitle(acc, 'x'), 't (s)', 'a common unit stays');
+  assert.equal(await axisTitle(acc, 'y'), 'a (ft/s²)');
+  assert.equal(await axisTitle(dep, 'y'), 'a (ft/s²)', 'the deprecated placeholder is the same unit');
+  assert.equal(await axisTitle(temp, 'y'), 'T (°F)');
+  // the data reaches the chart converted: 20 °C ± 2 is 64..72 °F
+  const s = await scales(temp);
+  assert.ok(s.y[0] > 55 && s.y[1] < 80, `temperature range in °F: ${s.y}`);
+  // the REST API still carries the buffers as they are
+  const r = await api('get?distance=full&height=full&temp=full');
+  assert.deepEqual(r.buffer.distance.buffer, [1.5]);
+  assert.deepEqual(r.buffer.height.buffer, [2]);
+  assert.ok(r.buffer.temp.buffer.every(v => v > 17 && v < 23), 'temperature buffer in °C');
+  assertNoErrors();
+});
+
+test('units: the metric setting converts imperial units and leaves metric ones alone', async t => {
+  if (!(await loadWithSetting(t, 'metric'))) return;
+  await startMeasuring(1);
+  assert.deepEqual(await valueText(await elementByLabel('Distance')), {number: '1.50', unit: 'm'});
+  // 2 ft = 0.61 m: the factor 0.3 adds a decimal
+  assert.deepEqual(await valueText(await elementByLabel('Height')), {number: '0.61', unit: 'm'});
+  assert.equal(await axisTitle(await graphByLabel('Acceleration (partial, 3 datasets)'), 'y'), 'a (m/s²)');
+  assertNoErrors();
+});
+
+test('units: a click on the unit of a value element opens the dialog and switches the unit', async t => {
+  if (!(await requireUnitElements(t))) return;
+  await startMeasuring(1);
+  const distance = await elementByLabel('Distance');
+  await page.click(`#element${distance} .valueUnit`);
+  await sleep(300);
+  const dialog = await dialogChoices();
+  assert.ok(dialog, 'the unit dialog opened');
+  assert.deepEqual(dialog.groups, ['Metric (SI)', 'Imperial / US customary']);
+  assert.deepEqual(dialog.choices.map(c => c.id), ['nano_meter', 'micro_meter', 'milli_meter', 'centi_meter', 'meter', 'kilo_meter', 'inch', 'foot', 'yard', 'mile']);
+  const checked = dialog.choices.find(c => c.checked);
+  assert.equal(checked.id, 'meter');
+  assert.match(checked.label, /experiment default/);
+  await chooseUnit('centi_meter');
+  assert.equal(await dialogChoices(), null, 'the dialog closed');
+  // 1.5 m with two decimals is 150 cm with none
+  assert.deepEqual(await valueText(distance), {number: '150', unit: 'cm'});
+  await page.click(`#element${distance} .valueUnit`);
+  await sleep(300);
+  assert.equal((await dialogChoices()).choices.find(c => c.checked).id, 'centi_meter', 'the current unit is checked');
+  await page.click('.unitOverlay .unitCancel');
+  await sleep(200);
+  assert.equal(await dialogChoices(), null);
+  assert.deepEqual(await valueText(distance), {number: '150', unit: 'cm'});
+  // a value in the experiment's unit again after a reload: the choice is page-local
+  await page.reload({waitUntil: 'load'});
+  await sleep(1000);
+  assert.deepEqual(await valueText(distance), {number: '1.50', unit: 'm'});
+  // a text unit is not convertible: the app sends a configuration for every value element, the mock only for the
+  // logical ones (legacy path), so either no state or a non-convertible one is right
+  const picked = await elementByLabel('Picked x');
+  const pickedState = await unitState(picked);
+  assert.ok(pickedState === null || (pickedState.convertible === false && pickedState.unitId === null), 'a text unit is not convertible: ' + JSON.stringify(pickedState));
+  assert.equal(await page.$(`#element${picked} .valueUnit.convertible`), null, 'no tap target on a text unit');
+  await shot('unit-dialog');
+  assertNoErrors();
+});
+
+test('units: an edit element converts its field and limits and sends the typed value converted back', async t => {
+  if (!(await requireUnitElements(t))) return;
+  await startMeasuring(1);
+  const length = await elementByLabel('Length');
+  await page.click(`#element${length} .unit`);
+  await sleep(300);
+  assert.ok(await dialogChoices(), 'the unit dialog opened');
+  await chooseUnit('foot');
+  let field = await editField(length);
+  assert.equal(field.value, '1.64042');
+  assert.equal(field.unit, 'ft');
+  near(parseFloat(field.min), 0.328084, 1e-5, 'min in feet');
+  near(parseFloat(field.max), 6.56168, 1e-5, 'max in feet');
+  // typed 1 ft arrives as 0.3048 m in the buffer
+  await page.click(`#element${length} input.value`, {clickCount: 3});
+  await page.type(`#element${length} input.value`, '1');
+  await page.keyboard.press('Tab');
+  await sleep(800);
+  const r = await api('get?length=full');
+  assert.equal(r.buffer.length.buffer.length, 1);
+  near(r.buffer.length.buffer[0], 0.3048, 1e-6, 'buffer value in metres');
+  await sleep(500);
+  field = await editField(length);
+  assert.equal(field.value, '1', 'the field keeps the typed value in feet');
+  await page.evaluate(i => PhyphoxUnits.setDisplayUnit(i, 'centi_meter'), length);
+  await sleep(500);
+  field = await editField(length);
+  assert.equal(field.value, '30.48');
+  assert.equal(field.unit, 'cm');
+  assertNoErrors();
+});
+
+test('units: an axis of a maximized graph opens the dialog, converts the chart and the read-outs, and picks go back in the experiment\'s unit', async t => {
+  const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
+  if (idx === null || (await state(idx)).displayUnit.y !== 'meter_per_square_second') { t.skip('no logical units on the acceleration graph'); return; }
+  await startMeasuring(2);
+  await api('control?cmd=stop');
+  await sleep(500);
+  await maximize(idx);
+  const before = await scales(idx);
+  // a click below the plot: the x axis
+  const area = await page.evaluate(i => { const c = Chart.getChart(document.querySelector('#element' + i + ' canvas')); const r = c.canvas.getBoundingClientRect(); return {left: r.left + c.chartArea.left, right: r.left + c.chartArea.right, top: r.top + c.chartArea.top, bottom: r.top + c.chartArea.bottom, canvasBottom: r.bottom, canvasLeft: r.left}; }, idx);
+  await page.mouse.click((area.left + area.right) / 2, (area.bottom + area.canvasBottom) / 2);
+  await sleep(300);
+  const dialog = await dialogChoices();
+  assert.ok(dialog, 'the unit dialog of the x axis opened');
+  assert.deepEqual(dialog.groups, ['Other']);
+  assert.equal(dialog.choices.find(c => c.checked).id, 'second');
+  await chooseUnit('milli_second');
+  assert.equal(await axisTitle(idx, 'x'), 't (ms)');
+  const after = await scales(idx);
+  near(width(after.x) / width(before.x), 1000, 1, 'the x range is in milliseconds now');
+  assert.equal(await page.evaluate(() => document.body.classList.contains('exclusive')), true, 'the click did not leave the maximized view');
+  // the y axis: a click left of the plot
+  await page.mouse.click((area.canvasLeft + area.left) / 2, (area.top + area.bottom) / 2);
+  await sleep(300);
+  assert.equal((await dialogChoices()).choices.find(c => c.checked).id, 'meter_per_square_second');
+  await chooseUnit('foot_per_square_second');
+  assert.equal(await axisTitle(idx, 'y'), 'a (ft/s²)');
+  assert.deepEqual((await state(idx)).axisUnits, {x: 'ms', y: 'ft/s²', z: ''});
+  // the picker reads out in the display units; the slope unit is composed once an axis is converted
+  await page.click(sel(idx, '.graphTool_pick'));
+  await sleep(300);
+  const i1 = await visiblePoint(idx, 0);
+  const p1 = await pointPos(idx, 0, i1);
+  const i2 = await pointAwayFrom(idx, 0, i1, 80);
+  const p2 = await pointPos(idx, 0, i2);
+  await drag(p1.x, p1.y, p2.x, p2.y);
+  const s = await state(idx);
+  assert.equal(s.picks.length, 2);
+  const text = await info(idx);
+  assert.match(text, /Point: .* ms, .* ft\/s²/);
+  assert.match(text, /Slope: .* ft\/s²\/ms/, 'composed slope unit');
+  // the pick values are the buffer values converted: accX[i] / 0.3048, acc_time[i] * 1000
+  const r = await api('get?accX=full&acc_time=full');
+  near(s.picks[0].y, r.buffer.accX.buffer[s.picks[0].index] / 0.3048, 1e-3, 'picked y in ft/s²');
+  near(s.picks[0].x, r.buffer.acc_time.buffer[s.picks[0].index] * 1000, 1e-3, 'picked x in ms');
+  // a click in the axis area does not deselect
+  await page.mouse.click((area.left + area.right) / 2, (area.bottom + area.canvasBottom) / 2);
+  await sleep(300);
+  assert.equal((await state(idx)).picks.length, 2, 'the picks survive a click on the axis');
+  await page.click('.unitOverlay .unitCancel');
+  await sleep(200);
+  await shot('unit-axis');
+  assertNoErrors();
+});
+
+test('units: a temperature axis converts positions with the offset and differences with the scale alone', async t => {
+  const idx = await requireGraph(t, 'Temperature');
+  if (idx === null) return;
+  await startMeasuring(2);
+  await api('control?cmd=stop');
+  await sleep(500);
+  await page.evaluate(i => PhyphoxGraph.setDisplayUnit(i, 'y', 'degree_fahrenheit'), idx);
+  await sleep(300);
+  assert.equal(await axisTitle(idx, 'y'), 'T (°F)');
+  await maximize(idx);
+  await page.click(sel(idx, '.graphTool_pick'));
+  await sleep(300);
+  const i1 = await visiblePoint(idx, 0);
+  const p1 = await pointPos(idx, 0, i1);
+  const i2 = await pointAwayFrom(idx, 0, i1, 60);
+  const p2 = await pointPos(idx, 0, i2);
+  await drag(p1.x, p1.y, p2.x, p2.y);
+  const s = await state(idx);
+  assert.equal(s.picks.length, 2);
+  const r = await api('get?temp=full');
+  const raw0 = r.buffer.temp.buffer[s.picks[0].index], raw1 = r.buffer.temp.buffer[s.picks[1].index];
+  near(s.picks[0].y, raw0 * 1.8 + 32, 1e-3, 'a position carries the offset');
+  const text = await info(idx);
+  const m = text.match(/Difference: [^,]*, (-?[\d.]+) °F/);
+  assert.ok(m, 'difference line in °F: ' + text);
+  near(parseFloat(m[1]), (raw1 - raw0) * 1.8, 0.01, 'a difference carries the scale alone');
+  // a pick written to an output would go back in °C; the write path is shared with the picker graph, which the
+  // pick-output test covers
+  assertNoErrors();
+});
+
+test('units: a pick output writes the buffer value while the axis shows another unit', async t => {
+  const idx = await requireGraph(t, 'Picker (dots)');
+  if (idx === null || (await state(idx)).displayUnit.x !== 'second') { t.skip('no logical unit on the picker graph'); return; }
+  await startMeasuring(2);
+  await api('control?cmd=stop');
+  await sleep(500);
+  await page.evaluate(i => PhyphoxGraph.setDisplayUnit(i, 'x', 'milli_second'), idx);
+  await sleep(300);
+  await maximize(idx);
+  await page.click(sel(idx, '.graphTool_pick'));
+  await sleep(300);
+  const i = await visiblePoint(idx, 0);
+  const p = await pointPos(idx, 0, i);
+  await page.mouse.click(p.x, p.y);
+  await sleep(400);
+  const s = await state(idx);
+  assert.equal(s.picks.length, 1);
+  await page.click(sel(idx, '.pickOutput:nth-child(1)'));
+  await sleep(300);
+  await page.type(sel(idx, '.pickCalInput'), '532.5');
+  await page.keyboard.press('Enter');
+  await sleep(1000);
+  const r = await api('get?pickedX=full&acc_time=full');
+  near(r.buffer.pickedX.buffer[0], s.picks[0].x / 1000, 1e-6, 'the pick reaches the buffer in seconds');
+  near(r.buffer.pickedX.buffer[0], r.buffer.acc_time.buffer[s.picks[0].index], 1e-6, 'and equals the buffer value');
   assertNoErrors();
 });

@@ -105,9 +105,455 @@
         cancel: "Cancel",
         invalidValue: "Invalid value",
         zoomHint: "Mouse: drag to pan, hold shift and drag to zoom into a region, wheel to zoom. Touch: pinch to zoom, drag to pan.",
-        colorMapWarning: "The color plot in the remote interface is only an approximation. In contrast to the in-app plot, at the moment it cannot handle non-equidistant data or logarithmic scaling on the x and y axis. So, data at varying intervals may appear at the wrong location."
+        colorMapWarning: "The color plot in the remote interface is only an approximation. In contrast to the in-app plot, at the moment it cannot handle non-equidistant data or logarithmic scaling on the x and y axis. So, data at varying intervals may appear at the wrong location.",
+        unit: "Unit",
+        unitExperimentDefault: "experiment default",
+        metric: "Metric (SI)",
+        imperial: "Imperial / US customary",
+        other: "Other"
     };
     <!-- [[graphStrings]] -->
+
+    //The app's Unit system setting ("experiment", "metric" or "imperial") and its translated unit symbols; an app
+    //that does not replace the placeholders leaves the experiment's units and the built-in Latin symbols
+    var unitSystem = "experiment";
+    <!-- [[unitSystem]] -->
+    var unitStrings = {};
+    <!-- [[unitStrings]] -->
+
+    /*
+     * Units
+     *
+     * The known units of the phyphox file format and the conversion the app performs (phyphox-docs
+     * docs/file-format/units.md, spec/units.yml): a unit reference ("@meter") reaches the page as
+     * {id, text} and can be shown in every other unit of its quantity; text units stay as written.
+     * The table below is the same as in the apps and has to stay literally in step with them.
+     */
+    var PhyphoxUnits = (function() {
+        var table = {};
+        var order = [];
+        function add(id, symbol, quantity, scale, offset, system, counterpart) {
+            table[id] = {id: id, symbol: symbol, quantity: quantity, scale: scale, offset: offset, system: system, counterpart: counterpart};
+            order.push(id);
+        }
+        add("nano_meter", "nm", "length", 1e-9, 0, "metric", null);
+        add("micro_meter", "\u00b5m", "length", 1e-6, 0, "metric", null);
+        add("milli_meter", "mm", "length", 1e-3, 0, "metric", "inch");
+        add("centi_meter", "cm", "length", 1e-2, 0, "metric", "inch");
+        add("meter", "m", "length", 1, 0, "metric", "foot");
+        add("kilo_meter", "km", "length", 1000, 0, "metric", "mile");
+        add("inch", "in", "length", 0.0254, 0, "imperial", "centi_meter");
+        add("foot", "ft", "length", 0.3048, 0, "imperial", "meter");
+        add("yard", "yd", "length", 0.9144, 0, "imperial", "meter");
+        add("mile", "mi", "length", 1609.344, 0, "imperial", "kilo_meter");
+        add("micro_second", "\u00b5s", "time", 1e-6, 0, "common", null);
+        add("milli_second", "ms", "time", 1e-3, 0, "common", null);
+        add("second", "s", "time", 1, 0, "common", null);
+        add("minute", "min", "time", 60, 0, "common", null);
+        add("hour", "h", "time", 3600, 0, "common", null);
+        add("hertz", "Hz", "frequency", 1, 0, "common", null);
+        add("kilo_hertz", "kHz", "frequency", 1000, 0, "common", null);
+        add("per_minute", "1/min", "frequency", 1 / 60, 0, "common", null);
+        add("meter_per_second", "m/s", "speed", 1, 0, "metric", "foot_per_second");
+        add("kilo_meter_per_hour", "km/h", "speed", 1 / 3.6, 0, "metric", "mile_per_hour");
+        add("foot_per_second", "ft/s", "speed", 0.3048, 0, "imperial", "meter_per_second");
+        add("mile_per_hour", "mph", "speed", 0.44704, 0, "imperial", "kilo_meter_per_hour");
+        add("meter_per_square_second", "m/s\u00b2", "acceleration", 1, 0, "metric", "foot_per_square_second");
+        add("foot_per_square_second", "ft/s\u00b2", "acceleration", 0.3048, 0, "imperial", "meter_per_square_second");
+        add("standard_gravity", "g", "acceleration", 9.80665, 0, "common", null);
+        add("radian_per_second", "rad/s", "angular_velocity", 1, 0, "common", null);
+        add("degree_per_second", "\u00b0/s", "angular_velocity", Math.PI / 180, 0, "common", null);
+        add("revolution_per_minute", "rpm", "angular_velocity", 2 * Math.PI / 60, 0, "common", null);
+        add("degree", "\u00b0", "angle", Math.PI / 180, 0, "common", null);
+        add("radian", "rad", "angle", 1, 0, "common", null);
+        add("micro_tesla", "\u00b5T", "magnetic_flux_density", 1e-6, 0, "common", null);
+        add("milli_tesla", "mT", "magnetic_flux_density", 1e-3, 0, "common", null);
+        add("tesla", "T", "magnetic_flux_density", 1, 0, "common", null);
+        add("gauss", "G", "magnetic_flux_density", 1e-4, 0, "common", null);
+        add("lux", "lx", "illuminance", 1, 0, "metric", "foot_candle");
+        add("foot_candle", "fc", "illuminance", 10.7639, 0, "imperial", "lux");
+        add("pascal", "Pa", "pressure", 1, 0, "metric", null);
+        add("hecto_pascal", "hPa", "pressure", 100, 0, "metric", "inch_of_mercury");
+        add("kilo_pascal", "kPa", "pressure", 1000, 0, "metric", "psi");
+        add("milli_bar", "mbar", "pressure", 100, 0, "metric", "inch_of_mercury");
+        add("bar", "bar", "pressure", 100000, 0, "metric", null);
+        add("inch_of_mercury", "inHg", "pressure", 3386.389, 0, "imperial", "hecto_pascal");
+        add("psi", "psi", "pressure", 6894.757, 0, "imperial", "kilo_pascal");
+        add("degree_celsius", "\u00b0C", "temperature", 1, 273.15, "metric", "degree_fahrenheit");
+        add("kelvin", "K", "temperature", 1, 0, "common", null);
+        add("degree_fahrenheit", "\u00b0F", "temperature", 5 / 9, 255.37222222222223, "imperial", "degree_celsius");
+        add("decibel", "dB", null, 1, 0, "common", null);
+        add("percent", "%", null, 1, 0, "common", null);
+        add("arbitrary_unit", "arb. unit", null, 1, 0, "common", null);
+
+        function get(id) {
+            return id != null && table.hasOwnProperty(id) ? table[id] : null;
+        }
+
+        function isConvertible(id) {
+            var d = get(id);
+            return d != null && d.quantity != null;
+        }
+
+        function sameQuantity(a, b) {
+            var da = get(a), db = get(b);
+            return da != null && db != null && da.quantity != null && da.quantity == db.quantity;
+        }
+
+        //The translated symbol from the app, else the Latin one
+        function symbol(id) {
+            if (unitStrings.hasOwnProperty(id))
+                return unitStrings[id];
+            var d = get(id);
+            return d ? d.symbol : id;
+        }
+
+        //What a unit {id, text} of the view layout shows while it is not converted
+        function unitText(unit) {
+            if (!unit)
+                return "";
+            if (unit.id != null)
+                return symbol(unit.id);
+            return unit.text == null ? "" : unit.text;
+        }
+
+        function alternatives(id) {
+            var d = get(id);
+            var result = [];
+            if (!d || d.quantity == null)
+                return result;
+            order.forEach(function(other) {
+                if (table[other].quantity == d.quantity)
+                    result.push(table[other]);
+            });
+            return result;
+        }
+
+        //The unit shown under the Unit system setting: metric replaces imperial units, imperial replaces metric
+        //units that have a counterpart, everything else stays
+        function forSetting(id, setting) {
+            var d = get(id);
+            if (!d || d.quantity == null || !d.counterpart || !setting || setting == "experiment")
+                return id;
+            if (setting == "metric" && d.system == "imperial")
+                return d.counterpart;
+            if (setting == "imperial" && d.system == "metric")
+                return d.counterpart;
+            return id;
+        }
+
+        function scale(from, to) {
+            var df = get(from), dt = get(to);
+            if (!df || !dt || from == to || !sameQuantity(from, to))
+                return 1;
+            return df.scale / dt.scale;
+        }
+
+        //A position: scale and offset
+        function convert(v, from, to) {
+            var df = get(from), dt = get(to);
+            if (!df || !dt || from == to || !sameQuantity(from, to))
+                return v;
+            return (v * df.scale + df.offset - dt.offset) / dt.scale;
+        }
+
+        //Decimals after a conversion by the display factor: never coarser than the author's resolution
+        function precision(p, f) {
+            if (p < 0 || !(f > 0))
+                return p;
+            return Math.max(0, p - Math.floor(Math.log10(f)));
+        }
+
+        function roundSignificant(v, digits) {
+            if (v == 0 || !isFinite(v))
+                return v;
+            var magnitude = Math.pow(10, digits - 1 - Math.floor(Math.log10(Math.abs(v))));
+            return Math.round(v * magnitude) / magnitude;
+        }
+
+        function escapeHTML(s) {
+            return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        //The dialog behind a tapped unit: every unit of the quantity, grouped by system, the experiment's marked
+        function showDialog(experimentId, currentId, onPick) {
+            var old = document.body.querySelector(".unitOverlay");
+            if (old)
+                document.body.removeChild(old);
+            var groups = [["metric", graphStrings.metric], ["imperial", graphStrings.imperial], ["common", graphStrings.other]];
+            var html = "<div class=\"clearBox unitBox\"><p>" + escapeHTML(graphStrings.unit) + "</p>";
+            groups.forEach(function(group) {
+                var rows = "";
+                alternatives(experimentId).forEach(function(d) {
+                    if (d.system != group[0])
+                        return;
+                    var label = symbol(d.id) + (d.id == experimentId ? " (" + graphStrings.unitExperimentDefault + ")" : "");
+                    rows += "<label class=\"unitChoice\"><input type=\"radio\" name=\"unit\" value=\"" + d.id + "\"" + (d.id == currentId ? " checked" : "") + "><span>" + escapeHTML(label) + "</span></label>";
+                });
+                if (rows != "")
+                    html += "<div class=\"unitGroup\">" + escapeHTML(group[1]) + "</div>" + rows;
+            });
+            html += "<div><button type=\"button\" class=\"unitCancel\">" + escapeHTML(graphStrings.cancel) + "</button></div></div>";
+            var overlay = document.createElement("div");
+            overlay.className = "clearOverlay unitOverlay";
+            overlay.innerHTML = html;
+            document.body.appendChild(overlay);
+            var close = function() {
+                if (overlay.parentNode)
+                    overlay.parentNode.removeChild(overlay);
+            };
+            overlay.querySelector(".unitCancel").addEventListener("click", close);
+            overlay.addEventListener("click", function(e) {
+                if (e.target === overlay)
+                    close();
+            });
+            Array.prototype.forEach.call(overlay.querySelectorAll("input[type=radio]"), function(radio) {
+                radio.addEventListener("change", function() {
+                    close();
+                    onPick(radio.value);
+                });
+            });
+        }
+
+        /*
+         * Value and edit elements described by data ("value" / "edit" in the view layout): the page renders
+         * them itself from the buffers, in the display unit
+         */
+        var elements = {}; //index -> state
+
+        function convertibleValue(cfg) {
+            return cfg.unit && cfg.unit.id != null && isConvertible(cfg.unit.id) && (cfg.format == null || cfg.format == "float") && cfg.positiveUnit == null && cfg.negativeUnit == null;
+        }
+
+        function convertibleEdit(cfg) {
+            return cfg.unit && cfg.unit.id != null && isConvertible(cfg.unit.id) && cfg.decimal !== false;
+        }
+
+        function node(state, className) {
+            var el = document.getElementById("element" + state.index);
+            return el ? el.getElementsByClassName(className)[0] : null;
+        }
+
+        function displaySymbol(state) {
+            if (state.displayUnitId != null && state.displayUnitId != state.cfg.unit.id)
+                return symbol(state.displayUnitId);
+            return unitText(state.cfg.unit);
+        }
+
+        function toDisplay(state, v) {
+            return state.displayUnitId != null && state.displayUnitId != state.cfg.unit.id ? convert(v, state.cfg.unit.id, state.displayUnitId) : v;
+        }
+
+        function fromDisplay(state, v) {
+            return state.displayUnitId != null && state.displayUnitId != state.cfg.unit.id ? convert(v, state.displayUnitId, state.cfg.unit.id) : v;
+        }
+
+        function displayFactor(state) {
+            return state.displayUnitId != null && state.displayUnitId != state.cfg.unit.id ? scale(state.cfg.unit.id, state.displayUnitId) : 1;
+        }
+
+        //Installs the data functions before the views are built; the html stays the app's
+        function prepareElement(ve) {
+            var cfg = ve.value || ve.edit;
+            var index = parseInt(ve.index);
+            var state = {index: index, ve: ve, cfg: cfg, kind: ve.value ? "value" : "edit", lastValue: null, lastArray: null,
+                convertible: ve.value ? convertibleValue(cfg) : convertibleEdit(cfg), displayUnitId: cfg.unit ? cfg.unit.id : null};
+            if (state.convertible)
+                state.displayUnitId = forSetting(cfg.unit.id, unitSystem);
+            elements[index] = state;
+            var buffer = ve.dataInput && ve.dataInput.length > 0 ? ve.dataInput[0] : null;
+            ve.dataInputFunction = function(data) {
+                if (buffer == null || !data.hasOwnProperty(buffer))
+                    return;
+                var d = data[buffer].data;
+                state.lastArray = d;
+                state.lastValue = d.length > 0 ? d[d.length - 1] : null;
+            };
+            ve.dataCompleteFunction = function() {
+                if (state.kind == "value")
+                    renderValue(state);
+                else
+                    renderEdit(state);
+            };
+        }
+
+        //Called after the html has been placed in the document: the unit becomes the tap target
+        function attachToDOM(ve) {
+            var state = elements[parseInt(ve.index)];
+            if (!state)
+                return;
+            var unitNode = node(state, state.kind == "value" ? "valueUnit" : "unit");
+            if (unitNode && state.convertible) {
+                unitNode.classList.add("convertible");
+                unitNode.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    showDialog(state.cfg.unit.id, state.displayUnitId, function(id) { setDisplayUnit(state.index, id); });
+                });
+            }
+            if (state.kind == "edit")
+                attachEdit(state);
+            else
+                renderValue(state);
+        }
+
+        function formatNumber(state, factored) {
+            var cfg = state.cfg;
+            var shown = toDisplay(state, factored);
+            var p = cfg.precision;
+            if (!cfg.scientific)
+                p = precision(p, displayFactor(state));
+            return cfg.scientific ? shown.toExponential(p) : shown.toFixed(p);
+        }
+
+        function asciiOf(array) {
+            var s = "";
+            (array || []).forEach(function(v) {
+                if (v == null || isNaN(v))
+                    return;
+                var c = Math.round(v);
+                if (c > 31 && c < 126)
+                    s += String.fromCharCode(c);
+            });
+            return s;
+        }
+
+        //Mirrors the app's value element: mappings, NaN, the formats, positive/negative unit, then value and unit
+        function renderValue(state) {
+            var cfg = state.cfg;
+            var numberNode = node(state, "valueNumber"), unitNode = node(state, "valueUnit");
+            if (!numberNode || !unitNode)
+                return;
+            var x = state.lastValue;
+            var v = null, u = "";
+            if (x == null || isNaN(x)) {
+                v = "-";
+            } else {
+                (cfg.map || []).forEach(function(m) {
+                    if (v === null && (m.min == null || x >= m.min) && (m.max == null || x <= m.max))
+                        v = m.str;
+                });
+                if (v === null) {
+                    var factored = x * cfg.factor;
+                    var degree = Math.floor(factored);
+                    var minutes = Math.abs((factored - degree) * 60);
+                    var integralMinutes = Math.floor(minutes);
+                    var seconds = Math.abs(minutes - integralMinutes) * 60;
+                    var fixed = function(n) { return cfg.scientific ? n.toExponential(cfg.precision) : n.toFixed(cfg.precision); };
+                    if (cfg.format == "ascii")
+                        v = asciiOf(state.lastArray);
+                    else if (cfg.format == "degree-minutes")
+                        v = degree + "\u00b0 " + fixed(minutes) + "' ";
+                    else if (cfg.format == "degree-minutes-seconds")
+                        v = degree + "\u00b0 " + integralMinutes + "' " + fixed(seconds) + "'' ";
+                    else
+                        v = formatNumber(state, factored);
+                    if (cfg.positiveUnit != null && factored >= 0)
+                        u = cfg.positiveUnit;
+                    else if (cfg.negativeUnit != null && factored < 0)
+                        u = cfg.negativeUnit;
+                    else
+                        u = displaySymbol(state);
+                }
+            }
+            numberNode.textContent = v;
+            unitNode.textContent = u;
+        }
+
+        //The app's edit markup writes the buffer from its onchange; with the configuration the page converts first
+        function attachEdit(state) {
+            var input = node(state, "value");
+            if (!input)
+                return;
+            input.onchange = null;
+            input.removeAttribute("onchange");
+            var buffer = state.ve.dataInput && state.ve.dataInput.length > 0 ? state.ve.dataInput[0] : null;
+            input.addEventListener("change", function() {
+                var shown = parseFloat(String(input.value).replace(",", "."));
+                if (!isFinite(shown) || buffer == null)
+                    return;
+                var raw = fromDisplay(state, shown) / state.cfg.factor;
+                ajax("control?cmd=set&buffer=" + encodeURIComponent(buffer) + "&value=" + raw);
+            });
+            updateEditChrome(state);
+            renderEdit(state);
+        }
+
+        //Unit text and the HTML5 limits in the display unit (the limits are buffer values in the file)
+        function updateEditChrome(state) {
+            var cfg = state.cfg;
+            var input = node(state, "value"), unitNode = node(state, "unit");
+            if (!input || !unitNode)
+                return;
+            unitNode.textContent = displaySymbol(state);
+            var min = cfg.min, max = cfg.max;
+            if (cfg.signed === false && (min == null || min < 0))
+                min = 0;
+            if (min != null)
+                input.setAttribute("min", toDisplay(state, min * cfg.factor));
+            else
+                input.removeAttribute("min");
+            if (max != null)
+                input.setAttribute("max", toDisplay(state, max * cfg.factor));
+            else
+                input.removeAttribute("max");
+            if (cfg.decimal === false)
+                input.setAttribute("step", "1");
+        }
+
+        function renderEdit(state) {
+            var input = node(state, "value");
+            if (!input || input === document.activeElement)
+                return;
+            var x = state.lastValue;
+            if (x == null || isNaN(x))
+                return;
+            var shown = toDisplay(state, x * state.cfg.factor);
+            if (state.displayUnitId != state.cfg.unit.id)
+                shown = roundSignificant(shown, 6);
+            input.value = shown;
+        }
+
+        //What the unit dialog does: the element shows another unit of the same quantity (page-local)
+        function setDisplayUnit(index, id) {
+            var state = elements[index];
+            if (!state || !state.convertible || !sameQuantity(state.cfg.unit.id, id))
+                return;
+            state.displayUnitId = id;
+            if (state.kind == "value")
+                renderValue(state);
+            else {
+                var input = node(state, "value");
+                if (input && input === document.activeElement)
+                    input.blur(); //uncommitted text is discarded with the unit it was typed in
+                updateEditChrome(state);
+                renderEdit(state);
+            }
+        }
+
+        //Read-only view for the test suite
+        function state(index) {
+            var s = elements[index];
+            return s ? {kind: s.kind, convertible: s.convertible, unitId: s.cfg.unit ? s.cfg.unit.id : null, displayUnitId: s.displayUnitId, symbol: displaySymbol(s)} : null;
+        }
+
+        return {
+            get: get,
+            isConvertible: isConvertible,
+            sameQuantity: sameQuantity,
+            symbol: symbol,
+            unitText: unitText,
+            alternatives: alternatives,
+            forSetting: forSetting,
+            scale: scale,
+            convert: convert,
+            precision: precision,
+            showDialog: showDialog,
+            prepareElement: prepareElement,
+            attachToDOM: attachToDOM,
+            setDisplayUnit: setDisplayUnit,
+            state: state
+        };
+    })();
 
     //Store settings to cookie
     function saveSetting(name, value) {
@@ -641,6 +1087,8 @@
         forEachElement(views[currentView].elements, function(ve) {
             if (ve.hasOwnProperty("graph"))
                 PhyphoxGraph.attachToDOM(ve);
+            else if (ve.hasOwnProperty("value") || ve.hasOwnProperty("edit"))
+                PhyphoxUnits.attachToDOM(ve);
         });
         adjustColors();
         forceFull = true;
@@ -841,11 +1289,14 @@
             scaleFactor = parseFloat(sf);
         body.style.fontSize = (100*scaleFactor)+"%";
 
-        //Graph elements are entirely built here from the configuration the app provides
+        //Graph elements are entirely built here from the configuration the app provides; value and edit elements
+        //with a configuration get their data functions here (their html stays the app's)
         views.forEach(function(view) {
             forEachElement(view.elements, function(ve) {
                 if (ve.hasOwnProperty("graph"))
                     PhyphoxGraph.prepareElement(ve);
+                else if (ve.hasOwnProperty("value") || ve.hasOwnProperty("edit"))
+                    PhyphoxUnits.prepareElement(ve);
             });
         });
 
@@ -983,16 +1434,89 @@
             return unit ? valueStr + " " + unit : valueStr;
         }
 
-        //Unit of a slope dy/dx: the explicit unitYperX of the experiment, or one composed from the axis units
-        function slopeUnit(cfg) {
-            if (cfg.unitYX)
+        //Unit of a slope dy/dx: the explicit unitYperX of the experiment while both axes show their experiment
+        //units, else one composed from the display symbols (units.md, "Slopes")
+        function slopeUnit(g) {
+            var cfg = g.cfg;
+            if (cfg.unitYX && !isConverted(g, "x") && !isConverted(g, "y"))
                 return cfg.unitYX;
-            var uy = fmt(cfg.unitY), ux = fmt(cfg.unitX);
+            var uy = unitSymbol(g, "y"), ux = unitSymbol(g, "x");
             if (uy && ux)
                 return uy + "/" + ux;
             if (ux)
                 return "1/" + ux;
             return uy;
+        }
+
+        /*
+         * Logical units (units.md): the data, the fixed ranges and the picks are converted into the display unit of
+         * each axis before they reach Chart.js, so the chart's own ticks, ranges and gestures work in that unit;
+         * a value written back to the app (the pick outputs) is converted the other way
+         */
+        function unitId(g, axis) {
+            return g.cfg["unitId" + axis.toUpperCase()] || null;
+        }
+
+        function axisConvertible(g, axis) {
+            var id = unitId(g, axis);
+            if (id == null || !PhyphoxUnits.isConvertible(id))
+                return false;
+            var clock = g.systemTime && (axis == "x" ? !!g.cfg.timeOnX : (axis == "y" && !!g.cfg.timeOnY));
+            return !clock;
+        }
+
+        function isConverted(g, axis) {
+            return axisConvertible(g, axis) && g.displayUnit[axis] != null && g.displayUnit[axis] != unitId(g, axis);
+        }
+
+        function toDisplay(g, axis, v) {
+            return isConverted(g, axis) && isFiniteNumber(v) ? PhyphoxUnits.convert(v, unitId(g, axis), g.displayUnit[axis]) : v;
+        }
+
+        function fromDisplay(g, axis, v) {
+            return isConverted(g, axis) && isFiniteNumber(v) ? PhyphoxUnits.convert(v, g.displayUnit[axis], unitId(g, axis)) : v;
+        }
+
+        //The symbol an axis shows: the display unit's, or the experiment's text
+        function unitSymbol(g, axis) {
+            if (isConverted(g, axis))
+                return PhyphoxUnits.symbol(g.displayUnit[axis]);
+            return fmt(g.cfg["unit" + axis.toUpperCase()]);
+        }
+
+        //What the unit dialog does for an axis: the user's ranges follow the unit, then everything is rebuilt
+        function setDisplayUnit(index, axis, id) {
+            var g = graphs[index];
+            if (!g || !axisConvertible(g, axis) || !PhyphoxUnits.sameQuantity(unitId(g, axis), id))
+                return;
+            var from = g.displayUnit[axis] || unitId(g, axis);
+            g.displayUnit[axis] = id;
+            if (axis != "z" && g.userRange[axis])
+                g.userRange[axis] = {min: PhyphoxUnits.convert(g.userRange[axis].min, from, id), max: PhyphoxUnits.convert(g.userRange[axis].max, from, id)};
+            if (axis == "x" && g.followWindow)
+                g.followWindow.width *= PhyphoxUnits.scale(from, id);
+            if (g.chart) {
+                if (axis == "x")
+                    g.chart.options.scales.x = scaleOptions(g, "x");
+                else if (axis == "y")
+                    g.chart.options.scales.y = scaleOptions(g, "y");
+                updateChart(g);
+            }
+        }
+
+        //Which axis label area of the chart a canvas position lies in: "x" below the plot, "y" left of it, "z" on the
+        //colour scale right of a map, or null inside the plot
+        function axisAt(g, pos) {
+            if (!g.chart)
+                return null;
+            var area = g.chart.chartArea;
+            if (pos.y > area.bottom && pos.x >= area.left && pos.x <= area.right)
+                return "x";
+            if (pos.x < area.left && pos.y >= area.top && pos.y <= area.bottom)
+                return "y";
+            if (g.isMap && pos.x > area.right && pos.y >= area.top && pos.y <= area.bottom)
+                return "z";
+            return null;
         }
 
         function axisTitle(label, unit) {
@@ -1097,6 +1621,8 @@
                 logX: !!cfg.logX,
                 logY: !!cfg.logY,
                 systemTime: !!cfg.systemTime,
+                //the unit shown per axis: the experiment's, or its counterpart under the app's Unit system setting
+                displayUnit: {x: PhyphoxUnits.forSetting(cfg.unitIdX || null, unitSystem), y: PhyphoxUnits.forSetting(cfg.unitIdY || null, unitSystem), z: PhyphoxUnits.forSetting(cfg.unitIdZ || null, unitSystem)},
                 picks: [], //up to two {datasetIndex, index, x, y, z}
                 preview: null, //nearest point under the mouse in pick mode
                 pendingCal: null, //pick output waiting for a user value
@@ -1254,8 +1780,8 @@
                     var lastX = null, lastY = null;
                     var lw = ds.lineWidth != null ? ds.lineWidth : 1.0;
                     for (var j = 0; j < n; j++) {
-                        var x = xs ? xs[j] : j;
-                        var y = ys[j];
+                        var x = toDisplay(g, "x", xs ? xs[j] : j);
+                        var y = toDisplay(g, "y", ys[j]);
                         var validX = isFiniteNumber(x) && (!logX || x > 0);
                         var validY = isFiniteNumber(y) && (!logY || y > 0);
                         if (isFiniteNumber(x) && isFiniteNumber(y))
@@ -1284,7 +1810,7 @@
                                 points.push({x: NaN, y: NaN});
                             }
                         } else if (ds.style == "map") {
-                            var z = zs ? zs[j] : NaN;
+                            var z = toDisplay(g, "z", zs ? zs[j] : NaN);
                             if (isFiniteNumber(z) && (!g.cfg.logZ || z > 0)) {
                                 if (z < range.z.min) range.z.min = z;
                                 if (z > range.z.max) range.z.max = z;
@@ -1316,8 +1842,9 @@
             var hasData = dataMin <= dataMax;
             var modeMin = cfg["scaleMin" + upper] || "auto";
             var modeMax = cfg["scaleMax" + upper] || "auto";
-            var cfgMin = cfg["min" + upper];
-            var cfgMax = cfg["max" + upper];
+            //the fixed/extend values and the follow window are in the experiment's unit
+            var cfgMin = toDisplay(g, axis, cfg["min" + upper]);
+            var cfgMax = toDisplay(g, axis, cfg["max" + upper]);
             var min, max;
 
             //A range the user has set stays, in follow mode it keeps its width and moves with the data
@@ -1452,7 +1979,7 @@
             var isTime = axis == "x" ? !!cfg.timeOnX : !!cfg.timeOnY;
             var systemTime = isTime && g.systemTime;
             var label = axis == "x" ? cfg.labelX : cfg.labelY;
-            var unit = axis == "x" ? cfg.unitX : cfg.unitY;
+            var unit = unitSymbol(g, axis);
             var precision = axis == "x" ? cfg.xPrecision : cfg.yPrecision;
             if (precision == null)
                 precision = -1;
@@ -1778,8 +2305,14 @@
                     break;
                 case "systemTime":
                     g.systemTime = !g.systemTime;
-                    if (g.systemTime)
+                    if (g.systemTime) {
                         requestTimeEvents(true);
+                        //a clock is not converted: the time axis returns to the experiment's unit
+                        if (g.cfg.timeOnX && g.displayUnit.x != unitId(g, "x"))
+                            setDisplayUnit(index, "x", unitId(g, "x"));
+                        if (g.cfg.timeOnY && g.displayUnit.y != unitId(g, "y"))
+                            setDisplayUnit(index, "y", unitId(g, "y"));
+                    }
                     if (g.chart) {
                         g.chart.options.scales.x = scaleOptions(g, "x");
                         g.chart.options.scales.y = scaleOptions(g, "y");
@@ -1885,11 +2418,18 @@
             var drag = null;
             var previewPending = false;
 
-            //A plot that is not maximized has no interaction of its own: a tap or click maximizes it
+            //A plot that is not maximized has no interaction of its own: a tap or click maximizes it. Maximized, a
+            //click on an axis title area opens the unit dialog of that axis (units.md, "Switching a unit by hand")
             canvas.addEventListener("click", function(e) {
                 if (!g.interactive) {
                     e.stopPropagation();
                     toggleExclusive(g.index);
+                    return;
+                }
+                var axis = g.chart ? axisAt(g, canvasPosition(g.chart, e)) : null;
+                if (axis && axisConvertible(g, axis)) {
+                    e.stopPropagation();
+                    PhyphoxUnits.showDialog(unitId(g, axis), g.displayUnit[axis], function(id) { setDisplayUnit(g.index, axis, id); });
                 }
             });
 
@@ -1908,7 +2448,10 @@
             canvas.addEventListener("pointerdown", function(e) {
                 if (!isPicking(g) || (e.pointerType == "mouse" && e.button !== 0))
                     return;
-                drag = {id: e.pointerId, start: canvasPosition(g.chart, e), moved: false, first: null};
+                var start = canvasPosition(g.chart, e);
+                if (axisAt(g, start) != null)
+                    return; //the axis areas belong to the unit dialog, not to the picker
+                drag = {id: e.pointerId, start: start, moved: false, first: null};
                 try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
                 e.preventDefault();
             });
@@ -1992,18 +2535,20 @@
             var lines = [];
             if (g.interactive && g.mode == "pick") {
                 var clearButton = "<button type=\"button\" class=\"pickClear\" title=\"" + escapeHTML(graphStrings.cancel) + "\" onclick=\"PhyphoxGraph.clearPicks(" + g.index + ", event)\">&#x2715;</button>";
+                //the picks are in the display units, so a difference carries the scale alone and the slope the ratio
+                var ux = unitSymbol(g, "x"), uy = unitSymbol(g, "y"), uz = unitSymbol(g, "z");
                 g.picks.forEach(function(p, i) {
-                    var s = (i == 0 ? clearButton : "") + escapeHTML(graphStrings.point) + ": " + escapeHTML(withUnit(formatValue(p.x, cfg.xPrecision), cfg.unitX)) + ", " + escapeHTML(withUnit(formatValue(p.y, cfg.yPrecision), cfg.unitY));
+                    var s = (i == 0 ? clearButton : "") + escapeHTML(graphStrings.point) + ": " + escapeHTML(withUnit(formatValue(p.x, cfg.xPrecision), ux)) + ", " + escapeHTML(withUnit(formatValue(p.y, cfg.yPrecision), uy));
                     if (g.isMap && p.hasOwnProperty("z"))
-                        s += ", " + escapeHTML(withUnit(formatValue(p.z, cfg.zPrecision), cfg.unitZ));
+                        s += ", " + escapeHTML(withUnit(formatValue(p.z, cfg.zPrecision), uz));
                     lines.push(s);
                 });
                 if (g.picks.length == 2) {
                     var dx = g.picks[1].x - g.picks[0].x;
                     var dy = g.picks[1].y - g.picks[0].y;
-                    lines.push(escapeHTML(graphStrings.difference) + ": " + escapeHTML(withUnit(formatValue(dx, cfg.xPrecision), cfg.unitX)) + ", " + escapeHTML(withUnit(formatValue(dy, cfg.yPrecision), cfg.unitY)));
+                    lines.push(escapeHTML(graphStrings.difference) + ": " + escapeHTML(withUnit(formatValue(dx, cfg.xPrecision), ux)) + ", " + escapeHTML(withUnit(formatValue(dy, cfg.yPrecision), uy)));
                     if (dx != 0)
-                        lines.push(escapeHTML(graphStrings.slope) + ": " + escapeHTML(withUnit(formatG(dy / dx, 5), slopeUnit(cfg))));
+                        lines.push(escapeHTML(graphStrings.slope) + ": " + escapeHTML(withUnit(formatG(dy / dx, 5), slopeUnit(g))));
                 }
                 if (g.picks.length > 0 && cfg.pickOutputs && cfg.pickOutputs.length > 0) {
                     var buttons = "";
@@ -2154,9 +2699,10 @@
             updateInfo(g);
         }
 
-        //Writes the picked value (and the assigned value) into the output buffers, replacing their contents
+        //Writes the picked value (and the assigned value) into the output buffers, replacing their contents; the
+        //buffers hold the experiment's units, so a converted pick goes back through the conversion
         function writePick(g, out, userValue) {
-            var v = pickValueForOutput(g, out);
+            var v = fromDisplay(g, out.axis, pickValueForOutput(g, out));
             if (!isFiniteNumber(v))
                 return;
             var buffers = {};
@@ -2326,7 +2872,7 @@
             var labelX = left + barWidth + 4 * scaleFactor;
             ctx.fillText(formatG(g.mapZ.max, 3), labelX, top + 6 * scaleFactor);
             ctx.fillText(formatG(g.mapZ.min, 3), labelX, area.bottom - 6 * scaleFactor);
-            var title = axisTitle(cfg.labelZ, cfg.unitZ);
+            var title = axisTitle(cfg.labelZ, unitSymbol(g, "z"));
             if (title) {
                 ctx.translate(labelX + 8 * scaleFactor, (top + area.bottom) / 2);
                 ctx.rotate(-Math.PI / 2);
@@ -2358,7 +2904,7 @@
                 ctx.beginPath();
                 ctx.arc(px, py, r, 0, 2 * Math.PI);
                 ctx.stroke();
-                var text = withUnit(formatValue(g.preview.x, g.cfg.xPrecision), g.cfg.unitX) + ", " + withUnit(formatValue(g.preview.y, g.cfg.yPrecision), g.cfg.unitY);
+                var text = withUnit(formatValue(g.preview.x, g.cfg.xPrecision), unitSymbol(g, "x")) + ", " + withUnit(formatValue(g.preview.y, g.cfg.yPrecision), unitSymbol(g, "y"));
                 ctx.font = (12 * scaleFactor) + "px sans-serif";
                 ctx.textBaseline = "middle";
                 var tw = ctx.measureText(text).width;
@@ -2490,6 +3036,8 @@
                 follow: g.follow,
                 logX: g.logX,
                 logY: g.logY,
+                displayUnit: g.displayUnit,
+                axisUnits: {x: unitSymbol(g, "x"), y: unitSymbol(g, "y"), z: unitSymbol(g, "z")},
                 userRange: g.userRange,
                 picks: g.picks.map(function(p) { return {datasetIndex: p.datasetIndex, index: p.index, x: p.x, y: p.y}; }),
                 preview: g.preview ? {datasetIndex: g.preview.datasetIndex, index: g.preview.index} : null,
@@ -2508,6 +3056,7 @@
             commitCal: commitCal,
             cancelCal: cancelCal,
             clearPicks: clearPicks,
+            setDisplayUnit: setDisplayUnit,
             onMeasuringChanged: onMeasuringChanged
         };
     })();

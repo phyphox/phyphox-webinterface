@@ -80,6 +80,8 @@ block must be on a line of its own (an `<!--` comment is valid JavaScript there)
 | `title` | Title of the experiment |
 | `viewLayout` | JavaScript defining `views` and `clearGroups` (see below) |
 | `graphStrings` | `graphStrings = Object.assign(graphStrings, {...});` with the translated strings of the graph tools (see below) |
+| `unitSystem` | `var unitSystem = "experiment";` (or `"metric"`, `"imperial"`): the app's *Unit system* setting, the initial state of the unit conversion (see "Units"). An app that leaves the placeholder in place gets `experiment` |
+| `unitStrings` | `unitStrings = {"meter": "m", ...};` the app's translated symbol per unit id (`common_unit_short_<id>`), so the browser shows the same designations as the phone; the interface falls back to its built-in Latin table |
 | `viewOptions` | One `<li>` per experiment view |
 | `exportFormatOptions` | One `<option>` per export format, value = index |
 | `translationOK`, `translationCancel`, `clearConfirmTranslation`, `clearConfirmTranslationSelect`, `exportTranslation`, `switchToPhoneLayoutTranslation`, `switchColumns1Translation`, `switchColumns2Translation`, `switchColumns3Translation`, `toggleBrightModeTranslation`, `fontSizeTranslation` | The respective translated strings |
@@ -120,6 +122,7 @@ A `transform` has exactly one child. Each leaf element carries
 | `dataCompleteFunction` | A JavaScript function `function()` called after all input functions of the view |
 | `visibilityInput` | Optional buffer name whose last value (> 0) controls the element's visibility |
 | `graph` | Optional graph configuration object (below). When present, the interface builds html, dataInputFunction and dataCompleteFunction itself and ignores the ones provided |
+| `value`, `edit` | Optional configuration of a value or edit element ("Value and edit elements" below). When present, the interface installs its own dataInputFunction and dataCompleteFunction (the provided ones are ignored) and drives the element's `html`, which keeps its shape; without it the element runs on the app-generated functions as before |
 
 Labels (file format 1.21): the `html` of a value, edit, toggle (`switchElement`), dropdown and
 slider element contains its `<span class="label">` only when the element has a label - without
@@ -139,6 +142,42 @@ The two function entries are emitted as JavaScript source, which is why the view
 strictly JSON. Elements that describe themselves purely with data, like the graph, are the
 preferred direction for new element types.
 
+### Value and edit elements
+
+File format 1.21 gives the unit attributes logical units (phyphox-docs `docs/file-format/units.md`): a
+unit reference `@meter` names a known unit, which the interface can show in any other unit of its
+quantity, while a text unit stays as written. Everywhere below a **unit** is
+`{"id": "meter", "text": null}` for a reference and `{"id": null, "text": "m/s³"}` for text (an
+empty unit is `{"id": null, "text": ""}` or `{"id": null, "text": null}`). The `html` of the
+element carries the experiment's symbol; the interface replaces it while another unit is shown.
+
+`value`:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `unit` | unit | The experiment's unit |
+| `precision` | integer | Decimals (or digits after the point of the exponent form) as in the file |
+| `scientific` | boolean | Exponent form instead of fixed point |
+| `factor` | number | Applied to the buffer value before it is shown (and before any conversion) |
+| `size` | number | The relative size of the number (informational, the html carries it) |
+| `format` | `"float"`, `"degree-minutes"`, `"degree-minutes-seconds"` or `"ascii"` | The value's format; only `float` converts |
+| `positiveUnit`, `negativeUnit` | string or null | Direction labels shown instead of the unit by the sign of the value; an element with one is not converted |
+| `map` | array | The `map` children: `{"min": number or null, "max": number or null, "str": text}`, the first matching one replaces the number |
+
+`edit`:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `unit` | unit | The experiment's unit |
+| `factor` | number | The field shows buffer value × factor; a typed value is divided by it before it is sent |
+| `min`, `max` | number or null | The limits in buffer units (as in the file); the interface converts them for the field's `min`/`max` |
+| `signed`, `decimal` | boolean | Whether negative and non-integer input is allowed; an integer field (`decimal` false) is not converted |
+| `default` | number or null | The value the app seeds the buffer with (informational) |
+
+With the configuration present the interface sends a typed value itself
+(`control?cmd=set&buffer=<name>&value=<v>` with `v` converted back to the experiment's unit and divided
+by `factor`), so the `onchange` of the app's markup is dropped.
+
 ### The graph configuration
 
 All keys are always present (use `null` for "not set"), booleans are booleans, numbers are numbers:
@@ -147,8 +186,9 @@ All keys are always present (use `null` for "not set"), booleans are booleans, n
 |---|---|---|
 | `aspectRatio` | number | Width divided by height of the plot element |
 | `labelX`, `labelY`, `labelZ` | string or null | Axis labels |
-| `unitX`, `unitY`, `unitZ` | string or null | Axis units |
-| `unitYX` | string or null | Unit of a slope (y per x), used for the two-point slope read-out |
+| `unitX`, `unitY`, `unitZ` | string or null | Axis units as text: the experiment's symbol for a unit reference, the text otherwise |
+| `unitIdX`, `unitIdY`, `unitIdZ` | string or null | The unit id of an axis whose unit is a reference (file format 1.21), null for a text unit; with an id the axis can be shown in another unit of the quantity (see "Units") |
+| `unitYX` | string or null | Unit of a slope (y per x), used for the two-point slope read-out while both axes show their experiment units; once an axis is converted the slope unit is composed from the display symbols |
 | `logX`, `logY`, `logZ` | boolean | Logarithmic axes; log x/y can be toggled by the user when set |
 | `xPrecision`, `yPrecision`, `zPrecision` | integer | Digits for axis labels and values, -1 = automatic |
 | `suppressScientificNotation` | boolean | Never use scientific notation on the axes |
@@ -178,7 +218,24 @@ bright-mode adjustment keeps the alpha. The same two forms appear in the inline 
 The keys of the `graphStrings` object (the interface has English defaults for all of them):
 `panAndZoom`, `pick`, `resetZoom`, `follow`, `logX`, `logY`, `systemTime`, `point`,
 `difference`, `slope`, `noData`, `noValidData`, `noDataInRange`, `ok`, `cancel`,
-`invalidValue`, `zoomHint`, `colorMapWarning`.
+`invalidValue`, `zoomHint`, `colorMapWarning`, `unit`, `unitExperimentDefault`, `metric`, `imperial`,
+`other` (the last five belong to the unit dialog).
+
+### Units
+
+The interface implements the unit conversion of phyphox-docs `docs/file-format/units.md` in the
+browser, from the same table the apps carry (`PhyphoxUnits` in `index.html`; it must stay literally in
+step with the apps): a value or edit element with a `value`/`edit` configuration and a graph axis
+with a `unitId*` show their unit as the experiment names it, or its counterpart when `unitSystem`
+says `metric` or `imperial`; a click or tap on the unit of a value or edit element, or on an axis
+title area of a maximized graph (below the plot for x, left of it for y, on the colour scale for z),
+opens a dialog with the units of that quantity, grouped by system, the experiment's marked as its
+default. The choice is page-local and not stored. Everything the element shows is converted (the
+value with the precision rule, the field and its limits, the chart's data, ranges, ticks and the
+picker's read-outs, with differences and slopes carrying the scale alone), while the REST API keeps
+carrying the buffers' original values: a pick output and a typed value are converted back before
+they are sent. Text units, values with `positiveUnit`/`negativeUnit` or a non-float `format`, integer
+edit fields and a time axis showing a clock are not converted.
 
 ## Tests
 

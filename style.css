@@ -785,3 +785,20 @@ ul {
     -webkit-user-select: none;
     user-select: none;
 }
+
+/* Units (file format 1.21): the unit of a value or edit element and the axis titles of a maximized graph open
+   the unit dialog; the dialog reuses the clear-data overlay */
+.valueUnit.convertible, .unit.convertible {
+    cursor: pointer;
+}
+
+.unitBox .unitGroup {
+    margin-top: 0.6em;
+    font-weight: bold;
+    opacity: 0.8;
+}
+
+.unitBox .unitChoice {
+    display: block;
+    padding: 0.2em 0;
+}

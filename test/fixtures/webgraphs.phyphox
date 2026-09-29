@@ -14,6 +14,10 @@
         <container size="1">assigned</container>
         <container size="1">pickedY</container>
         <container size="0">idx</container>
+        <container size="0">temp</container>
+        <container size="1" init="1.5">distance</container>
+        <container size="1" init="2">height</container>
+        <container size="1" init="0.5">length</container>
     </data-containers>
     <input>
         <sensor type="accelerometer" rate="50">
@@ -29,10 +33,15 @@
             <input as="exponent" type="value">2</input>
             <output as="power">acc</output>
         </power>
+        <add>
+            <input clear="false">accX</input>
+            <input type="value">20</input>
+            <output>temp</output>
+        </add>
     </analysis>
     <views>
         <view label="Graphs">
-            <graph label="Acceleration (partial, 3 datasets)" labelX="t" unitX="s" labelY="a" unitY="m/s²" unitYperX="m/s³" partialUpdate="true">
+            <graph label="Acceleration (partial, 3 datasets)" labelX="t" unitX="@second" labelY="a" unitY="@meter_per_square_second" unitYperX="m/s³" partialUpdate="true">
                 <input axis="x">acc_time</input>
                 <input axis="y">accX</input>
                 <input axis="x" color="green">acc_time</input>
@@ -44,7 +53,7 @@
                 <input axis="x">acc_time</input>
                 <input axis="y">accX</input>
             </graph>
-            <graph label="Picker (dots)" labelX="t" unitX="s" labelY="a²" unitY="m²/s⁴" style="dots" partialUpdate="true" pickLabel="Calibrate">
+            <graph label="Picker (dots)" labelX="t" unitX="@second" labelY="a²" unitY="m²/s⁴" style="dots" partialUpdate="true" pickLabel="Calibrate">
                 <input axis="x">acc_time</input>
                 <input axis="y">acc</input>
                 <output axis="x" label="Calibration point">pickedX</output>
@@ -60,6 +69,24 @@
             <value label="Picked y" size="1" precision="3">
                 <input>pickedY</input>
             </value>
+            <!-- logical units (file format 1.21): the same elements as in the mock's first view -->
+            <value label="Distance" precision="2" unit="@meter">
+                <input>distance</input>
+            </value>
+            <value label="Height" precision="1" unit="@foot">
+                <input>height</input>
+            </value>
+            <edit label="Length" unit="@meter" min="0.1" max="2.0" default="0.5">
+                <output>length</output>
+            </edit>
+            <graph label="Temperature" labelX="t" unitX="@second" labelY="T" unitY="@degree_celsius" partialUpdate="true">
+                <input axis="x">acc_time</input>
+                <input axis="y">temp</input>
+            </graph>
+            <graph label="Deprecated placeholder" labelX="t" unitX="[[unit_short_second]]" labelY="a" unitY="[[unit_short_meter_per_square_second]]" partialUpdate="true">
+                <input axis="x">acc_time</input>
+                <input axis="y">accX</input>
+            </graph>
         </view>
         <view label="Second">
             <graph label="Log y" labelX="t" unitX="s" labelY="a²" unitY="m²/s⁴" logY="true" partialUpdate="true">
