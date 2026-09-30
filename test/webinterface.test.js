@@ -1011,7 +1011,7 @@ test('units: a click on the unit of a value element opens the dialog and switche
   assert.deepEqual(dialog.choices.map(c => c.id), ['nano_meter', 'micro_meter', 'milli_meter', 'centi_meter', 'meter', 'kilo_meter', 'inch', 'foot', 'yard', 'mile']);
   const checked = dialog.choices.find(c => c.checked);
   assert.equal(checked.id, 'meter');
-  assert.match(checked.label, /experiment default/);
+  assert.match(checked.label, /\(default\)$/, "the experiment's unit is marked as its default");
   await chooseUnit('centi_meter');
   assert.equal(await dialogChoices(), null, 'the dialog closed');
   // 1.5 m with two decimals is 150 cm with none
