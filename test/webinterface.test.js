@@ -35,7 +35,11 @@ let server = null, browser = null, page = null, pageErrors = [];
 
 before(async () => {
   if (!DEVICE) server = mock.start(MOCK_PORT);
-  browser = await puppeteer.launch({executablePath: browserPath(), headless: 'new', args: ['--no-sandbox', '--disable-gpu', '--window-size=1400,900']});
+  // GitHub's runners take 10 to 40 s to bring Chromium up (a quarter second on a workstation), so
+  // puppeteer's default launch timeout of 30 s is what failed the suite now and then. With CI set,
+  // the browser's own output lands in the job log, which a bare launch timeout does not show.
+  browser = await puppeteer.launch({executablePath: browserPath(), headless: 'new', timeout: 180000, dumpio: !!process.env.CI,
+    args: ['--no-sandbox', '--disable-gpu', '--window-size=1400,900']});
   if (process.env.KEEP_SCREENSHOTS) fs.mkdirSync(OUT, {recursive: true});
 });
 
