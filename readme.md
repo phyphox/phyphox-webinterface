@@ -219,7 +219,24 @@ The keys of the `graphStrings` object (the interface has English defaults for al
 `panAndZoom`, `pick`, `resetZoom`, `follow`, `logX`, `logY`, `systemTime`, `point`,
 `difference`, `slope`, `noData`, `noValidData`, `noDataInRange`, `ok`, `cancel`,
 `invalidValue`, `zoomHint`, `colorMapWarning`, `unit`, `unitExperimentDefault`, `metric`, `imperial`,
-`other` (the last five belong to the unit dialog).
+`other` (the last five belong to the unit dialog), and for the question when a zoomed maximized
+graph is left (the same keys as the apps' string resources): `applyZoomQuestionTitle`,
+`applyZoomQuestion`, `applyZoomRange` (three placeholders: axis label, from, to),
+`applyZoomActionReset`, `applyZoomActionKeep`, `applyZoomActionFollow`, `applyZoomMoreOptions`,
+`applyZoomAlsoApply`, `applyZoomTargetThis`, `applyZoomTargetSameData`, `applyZoomTargetSameUnit`
+(one placeholder, the unit symbol), `applyZoomTargetSameAxis` (one placeholder, `x` or `y`).
+Placeholders are accepted in the Java form (`%1$s`, `%s`) and the Swift form (`%1$@`, `%@`).
+
+### Leaving a maximized graph
+
+A click on the label, on the plot's surroundings (outside the plot area and off the axis titles) or
+on another view's tab leaves the maximized graph. If the user has zoomed, the interface first asks
+"Keep this view?" with the zoomed range of each axis, as the apps do: "Reset zoom" and "Keep this
+section" answer directly, "More options…" offers reset / keep / keep and follow new data per axis and
+"Also apply to other graphs with…" the same data (the same input buffer), the same unit (the range
+converted between display units) or any axis of the same kind, among the graphs of the current view.
+Cancel stays in the maximized graph; a view switch or a layout change waits for the answer. No
+question is asked when nothing is zoomed, so toggling the clock display alone does not trigger it.
 
 ### Units
 
@@ -227,10 +244,11 @@ The interface implements the unit conversion of phyphox-docs `docs/file-format/u
 browser, from the same table the apps carry (`PhyphoxUnits` in `index.html`; it must stay literally in
 step with the apps): a value or edit element with a `value`/`edit` configuration and a graph axis
 with a `unitId*` show their unit as the experiment names it, or its counterpart when `unitSystem`
-says `metric` or `imperial`; a click or tap on the unit of a value or edit element, or on an axis
-title area of a maximized graph (below the plot for x, left of it for y, on the colour scale for z),
-opens a dialog with the units of that quantity, grouped by system, the experiment's marked as its
-default. The choice is page-local and not stored. Everything the element shows is converted (the
+says `metric` or `imperial`; a click or tap on the unit of a value or edit element, or on the axis
+title text of a maximized graph (the "t (s)" below the plot for x, the rotated title left of it for
+y, the colour scale's title for z, each with a small slop; a click elsewhere outside the plot leaves
+the maximized graph), opens a dialog with the units of that quantity, grouped by system, the
+experiment's marked as its default. The choice is page-local and not stored. Everything the element shows is converted (the
 value with the precision rule, the field and its limits, the chart's data, ranges, ticks and the
 picker's read-outs, with differences and slopes carrying the scale alone), while the REST API keeps
 carrying the buffers' original values: a pick output and a typed value are converted back before

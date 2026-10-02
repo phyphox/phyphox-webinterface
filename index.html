@@ -110,7 +110,19 @@
         unitExperimentDefault: "default",
         metric: "Metric (SI)",
         imperial: "Imperial / US customary",
-        other: "Other"
+        other: "Other",
+        applyZoomQuestionTitle: "Keep this view?",
+        applyZoomQuestion: "You zoomed in. Should the graph keep showing this section when you return?",
+        applyZoomRange: "%1$s: %2$s to %3$s",
+        applyZoomActionReset: "Reset zoom",
+        applyZoomActionKeep: "Keep this section",
+        applyZoomActionFollow: "Keep and follow new data",
+        applyZoomMoreOptions: "More options…",
+        applyZoomAlsoApply: "Also apply to other graphs with…",
+        applyZoomTargetThis: "this graph only",
+        applyZoomTargetSameData: "the same data",
+        applyZoomTargetSameUnit: "the same unit (%s)",
+        applyZoomTargetSameAxis: "any %s axis"
     };
     <!-- [[graphStrings]] -->
 
@@ -1095,8 +1107,9 @@
     }
 
     function switchView(newView) {
+        if (!leaveExclusive(function() { switchView(newView); }))
+            return;
         forceFull = true;
-        leaveExclusive();
         currentView = newView;
         updateUsedVarStr();
 
@@ -1167,8 +1180,9 @@
     }
 
     function switchColumns(columns) {
+        if (!leaveExclusive(function() { switchColumns(columns); }))
+            return;
         saveSetting("columns", columns);
-        leaveExclusive();
         body.classList.remove("columns1");
         body.classList.remove("columns2");
         body.classList.remove("columns3");
@@ -1177,8 +1191,9 @@
     }
 
     function switchToPhoneLayout() {
+        if (!leaveExclusive(switchToPhoneLayout))
+            return;
         saveSetting("columns", 0);
-        leaveExclusive();
         body.classList.remove("columns1");
         body.classList.remove("columns2");
         body.classList.remove("columns3");
@@ -1196,7 +1211,24 @@
         PhyphoxGraph.setInteractive(i, true);
     }
 
-    function leaveExclusive() {
+    //Leaves exclusive mode. A maximized graph with a zoom asks "Keep this view?" first (PhyphoxGraph.askKeepView); then
+    //this returns false and runs `after` once the user has answered, nothing on Cancel. True: left, the caller goes on.
+    function leaveExclusive(after) {
+        var maximized = document.querySelector("#views .graphElement.exclusive");
+        if (maximized && maximized.id && maximized.id.indexOf("element") == 0) {
+            var index = parseInt(maximized.id.substring(7));
+            if (PhyphoxGraph.askKeepView(index, function() {
+                finishLeaveExclusive();
+                if (after)
+                    after();
+            }))
+                return false;
+        }
+        finishLeaveExclusive();
+        return true;
+    }
+
+    function finishLeaveExclusive() {
         body.classList.remove("exclusive");
 
         var path = document.getElementsByClassName("exclusivePath");
@@ -1221,7 +1253,8 @@
     }
 
     function zoom(e, factor) {
-        leaveExclusive();
+        if (!leaveExclusive(function() { zoom(e, factor); }))
+            return;
         scaleFactor = factor;
         saveSetting("scaleFactor", scaleFactor);
         body.style.fontSize = (100*scaleFactor)+"%";
@@ -1504,19 +1537,71 @@
             }
         }
 
-        //Which axis label area of the chart a canvas position lies in: "x" below the plot, "y" left of it, "z" on the
-        //colour scale right of a map, or null inside the plot
-        function axisAt(g, pos) {
-            if (!g.chart)
+        //The font of the axis titles (scaleOptions) and of the colour scale (drawColorScale), as Chart.js resolves them
+        function titleFont() {
+            var size = 15 * scaleFactor;
+            return {size: size, lineHeight: 1.2 * size, padding: 3 * scaleFactor, string: size + "px 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif"};
+        }
+
+        //The rectangle of an axis's drawn title text, with a slop, in canvas coordinates; null when there is none. Chart.js
+        //centres the title along the scale, half a line height plus its padding in from the outer edge; the colour scale's
+        //title is drawn by drawColorScale.
+        function axisTitleRect(g, axis) {
+            var chart = g.chart;
+            if (!chart)
                 return null;
-            var area = g.chart.chartArea;
-            if (pos.y > area.bottom && pos.x >= area.left && pos.x <= area.right)
-                return "x";
-            if (pos.x < area.left && pos.y >= area.top && pos.y <= area.bottom)
-                return "y";
-            if (g.isMap && pos.x > area.right && pos.y >= area.top && pos.y <= area.bottom)
-                return "z";
+            var slop = 12 * scaleFactor;
+            var ctx = chart.ctx;
+            if (axis == "z") {
+                var area = chart.chartArea;
+                if (!g.isMap || g.cfg.showColorScale === false || chart.width - area.right < 30 * scaleFactor)
+                    return null;
+                var zTitle = axisTitle(g.cfg.labelZ, unitSymbol(g, "z"));
+                if (!zTitle)
+                    return null;
+                ctx.save();
+                ctx.font = (12 * scaleFactor) + "px sans-serif";
+                var zw = ctx.measureText(zTitle).width;
+                ctx.restore();
+                var zx = area.right + 34 * scaleFactor, zy = (area.top + area.bottom) / 2;
+                return {left: zx - slop, right: zx + 12 * scaleFactor + slop, top: zy - zw / 2 - slop, bottom: zy + zw / 2 + slop};
+            }
+            var scale = chart.scales[axis];
+            if (!scale || !scale.options.title || !scale.options.title.display || !scale.options.title.text)
+                return null;
+            var font = titleFont();
+            ctx.save();
+            ctx.font = font.string;
+            var w = ctx.measureText(scale.options.title.text).width;
+            ctx.restore();
+            var h = font.lineHeight;
+            if (axis == "x") {
+                var cx = (scale.left + scale.right) / 2, cy = scale.bottom - font.padding - h / 2;
+                return {left: cx - w / 2 - slop, right: cx + w / 2 + slop, top: cy - h / 2 - slop, bottom: cy + h / 2 + slop};
+            }
+            var yx = scale.left + font.padding + h / 2, yy = (scale.top + scale.bottom) / 2;
+            return {left: yx - h / 2 - slop, right: yx + h / 2 + slop, top: yy - w / 2 - slop, bottom: yy + w / 2 + slop};
+        }
+
+        //Which axis title a canvas position lies on: "x", "y", "z" (the colour scale of a map) or null
+        function axisAt(g, pos) {
+            var axes = g.isMap ? ["x", "y", "z"] : ["x", "y"];
+            for (var i = 0; i < axes.length; i++) {
+                var r = axisTitleRect(g, axes[i]);
+                if (r && pos.x >= r.left && pos.x <= r.right && pos.y >= r.top && pos.y <= r.bottom)
+                    return axes[i];
+            }
             return null;
+        }
+
+        //The plot area and, for a map, its colour scale bar: taps there belong to the tools
+        function insidePlot(g, pos) {
+            if (!g.chart)
+                return true;
+            var area = g.chart.chartArea;
+            if (pos.x >= area.left && pos.x <= area.right && pos.y >= area.top && pos.y <= area.bottom)
+                return true;
+            return g.isMap && pos.x >= area.right + 10 * scaleFactor && pos.x <= area.right + 22 * scaleFactor && pos.y >= area.top && pos.y <= area.bottom;
         }
 
         function axisTitle(label, unit) {
@@ -1616,6 +1701,7 @@
                 interactive: false,
                 mode: "zoom", //or "pick"
                 userRange: {x: null, y: null}, //ranges set by the user via zoom/pan, null = automatic
+                previouslyKept: false, //the user kept a zoom when leaving the maximized graph before ("Keep this view?")
                 follow: !!cfg.followX,
                 followWindow: null, //width of the followed window when the user switched follow on without a configured one
                 logX: !!cfg.logX,
@@ -2304,24 +2390,221 @@
                         g.chart.options.scales.y = scaleOptions(g, "y");
                     break;
                 case "systemTime":
-                    g.systemTime = !g.systemTime;
-                    if (g.systemTime) {
-                        requestTimeEvents(true);
-                        //a clock is not converted: the time axis returns to the experiment's unit
-                        if (g.cfg.timeOnX && g.displayUnit.x != unitId(g, "x"))
-                            setDisplayUnit(index, "x", unitId(g, "x"));
-                        if (g.cfg.timeOnY && g.displayUnit.y != unitId(g, "y"))
-                            setDisplayUnit(index, "y", unitId(g, "y"));
-                    }
-                    if (g.chart) {
-                        g.chart.options.scales.x = scaleOptions(g, "x");
-                        g.chart.options.scales.y = scaleOptions(g, "y");
-                    }
+                    setSystemTime(g, !g.systemTime);
                     break;
             }
             updateToolbar(g);
             if (g.chart)
                 updateChart(g);
+        }
+
+        function setSystemTime(g, on) {
+            g.systemTime = on;
+            if (g.systemTime) {
+                requestTimeEvents(true);
+                //a clock is not converted: the time axis returns to the experiment's unit
+                if (g.cfg.timeOnX && g.displayUnit.x != unitId(g, "x"))
+                    setDisplayUnit(g.index, "x", unitId(g, "x"));
+                if (g.cfg.timeOnY && g.displayUnit.y != unitId(g, "y"))
+                    setDisplayUnit(g.index, "y", unitId(g, "y"));
+            }
+            if (g.chart) {
+                g.chart.options.scales.x = scaleOptions(g, "x");
+                g.chart.options.scales.y = scaleOptions(g, "y");
+            }
+        }
+
+        /*
+         * "Keep this view?" when a maximized graph with a zoom is left, with the apps' semantics: two direct buttons,
+         * "More options…" for per-axis reset / keep / follow and applying the range to other graphs of the view with the
+         * same data (buffer), the same unit (converted) or on the same axis. No question without a zoom.
+         */
+        function formatString(template, args) {
+            var i = 0;
+            return String(template).replace(/%(\d+)\$[s@]|%[s@]/g, function(m, n) {
+                var v = n ? args[parseInt(n) - 1] : args[i++];
+                return v == null ? "" : v;
+            });
+        }
+
+        //"t: 2.0 s to 4.5 s": the user's range of an axis as the tick labels would show it
+        function zoomRangeLine(g, axis) {
+            var cfg = g.cfg;
+            var r = g.userRange[axis];
+            var isTime = axis == "x" ? !!cfg.timeOnX : !!cfg.timeOnY;
+            var clock = isTime && g.systemTime;
+            var precision = axis == "x" ? cfg.xPrecision : cfg.yPrecision;
+            if (precision == null)
+                precision = -1;
+            var log = axis == "x" ? g.logX : g.logY;
+            var ticks = g.chart && g.chart.scales[axis] ? g.chart.scales[axis].ticks : [];
+            var fmtValue = function(v) {
+                if (clock)
+                    return formatSystemTime(v, !!cfg.linearTime);
+                return withUnit(formatTickValue(v, ticks, precision, !!cfg.suppressScientificNotation, log), unitSymbol(g, axis));
+            };
+            return formatString(graphStrings.applyZoomRange, [fmt(axis == "x" ? cfg.labelX : cfg.labelY), fmtValue(r.min), fmtValue(r.max)]);
+        }
+
+        //The axis control starts from the emphasised button, applied to every zoomed axis; Keep on a following x axis is follow
+        function initialAxisAction(g, axis, simple) {
+            if (!g.userRange[axis] || simple == "reset")
+                return "reset";
+            if (axis == "x" && g.cfg.partialUpdate && g.follow)
+                return "follow";
+            return "keep";
+        }
+
+        //Applies a per-axis choice to this graph and, per target, to the other graphs of the view, then calls onDone
+        function applyZoomChoice(g, actions, targets) {
+            var zoomedBefore = {x: g.userRange.x, y: g.userRange.y};
+            g.previouslyKept = actions.x != "reset" || actions.y != "reset";
+            ["x", "y"].forEach(function(axis) {
+                if (actions[axis] == "reset") {
+                    g.userRange[axis] = null;
+                    if (axis == "x") {
+                        g.follow = !!g.cfg.followX;
+                        g.followWindow = null;
+                    }
+                } else if (axis == "x")
+                    g.follow = actions.x == "follow";
+            });
+            ["x", "y"].forEach(function(axis) {
+                var target = targets[axis];
+                if (!zoomedBefore[axis] || !target || target == "this")
+                    return;
+                var range = g.userRange[axis]; //null after a reset: the others reset too
+                var follow = axis == "x" && actions.x == "follow";
+                var buffer = g.cfg.datasets.length > 0 ? g.cfg.datasets[0][axis] : null;
+                forEachElement(views[currentView].elements, function(ve) {
+                    if (!ve.hasOwnProperty("graph"))
+                        return;
+                    var other = graphs[parseInt(ve.index)];
+                    if (!other || other === g)
+                        return;
+                    ["x", "y"].forEach(function(otherAxis) {
+                        var converted = range;
+                        if (target == "sameAxis") {
+                            if (otherAxis != axis)
+                                return;
+                        } else if (target == "sameData") {
+                            if (buffer == null || !other.cfg.datasets.some(function(ds) { return ds[otherAxis] == buffer; }))
+                                return;
+                        } else if (target == "sameUnit") {
+                            var fromId = unitId(g, axis), toId = unitId(other, otherAxis);
+                            if (fromId != null) {
+                                if (toId == null || !PhyphoxUnits.sameQuantity(fromId, toId))
+                                    return;
+                                var from = g.displayUnit[axis] || fromId, to = other.displayUnit[otherAxis] || toId;
+                                if (range && from != to)
+                                    converted = {min: PhyphoxUnits.convert(range.min, from, to), max: PhyphoxUnits.convert(range.max, from, to)};
+                            } else {
+                                var text = fmt(g.cfg["unit" + axis.toUpperCase()]);
+                                if (toId != null || !text || text != fmt(other.cfg["unit" + otherAxis.toUpperCase()]))
+                                    return;
+                            }
+                        } else
+                            return;
+                        other.userRange[otherAxis] = converted ? {min: converted.min, max: converted.max} : null;
+                        if (otherAxis == "x") {
+                            other.follow = range ? follow : !!other.cfg.followX;
+                            other.followWindow = null;
+                        }
+                        var isTime = otherAxis == "x" ? !!other.cfg.timeOnX : !!other.cfg.timeOnY;
+                        var sourceIsTime = axis == "x" ? !!g.cfg.timeOnX : !!g.cfg.timeOnY;
+                        if (isTime && sourceIsTime && other.systemTime != g.systemTime)
+                            setSystemTime(other, g.systemTime);
+                    });
+                    updateToolbar(other);
+                    if (other.chart)
+                        updateChart(other);
+                });
+            });
+            updateToolbar(g);
+            if (g.chart)
+                updateChart(g);
+        }
+
+        //Shows the question; false (and nothing shown) when nothing is zoomed. onDone runs after Reset, Keep or OK, not after Cancel.
+        function askKeepView(index, onDone) {
+            var g = graphs[index];
+            if (!g || (!g.userRange.x && !g.userRange.y))
+                return false;
+            var old = document.body.querySelector(".zoomOverlay");
+            if (old)
+                document.body.removeChild(old);
+            var axes = ["x", "y"].filter(function(a) { return !!g.userRange[a]; });
+            var simple = g.previouslyKept ? "keep" : "reset";
+            var esc = escapeHTML;
+            var html = "<div class=\"clearBox zoomBox\"><p class=\"zoomTitle\">" + esc(graphStrings.applyZoomQuestionTitle) + "</p><p>" + esc(graphStrings.applyZoomQuestion) + "</p>";
+            axes.forEach(function(a) {
+                html += "<p class=\"zoomRange\">" + esc(zoomRangeLine(g, a)) + "</p>";
+            });
+            html += "<div class=\"zoomOptions\" style=\"display:none;\">";
+            axes.forEach(function(a) {
+                var initial = initialAxisAction(g, a, simple);
+                var radio = function(action, text) {
+                    return "<label class=\"zoomChoice\"><input type=\"radio\" name=\"zoomAction_" + a + "\" value=\"" + action + "\"" + (initial == action ? " checked" : "") + "><span>" + esc(text) + "</span></label>";
+                };
+                html += "<div class=\"zoomAxis\" data-axis=\"" + a + "\"><p class=\"zoomRange\">" + esc(zoomRangeLine(g, a)) + "</p>";
+                html += radio("reset", graphStrings.applyZoomActionReset) + radio("keep", graphStrings.applyZoomActionKeep);
+                if (a == "x" && g.cfg.partialUpdate)
+                    html += radio("follow", graphStrings.applyZoomActionFollow);
+                html += "<p class=\"zoomAlso\">" + esc(graphStrings.applyZoomAlsoApply) + "</p><select class=\"zoomTarget\" data-axis=\"" + a + "\">";
+                html += "<option value=\"this\">" + esc(graphStrings.applyZoomTargetThis) + "</option>";
+                html += "<option value=\"sameData\">" + esc(graphStrings.applyZoomTargetSameData) + "</option>";
+                var symbol = unitSymbol(g, a);
+                if (symbol)
+                    html += "<option value=\"sameUnit\">" + esc(formatString(graphStrings.applyZoomTargetSameUnit, [symbol])) + "</option>";
+                html += "<option value=\"sameAxis\">" + esc(formatString(graphStrings.applyZoomTargetSameAxis, [a])) + "</option>";
+                html += "</select></div>";
+            });
+            html += "</div>";
+            html += "<div class=\"zoomButtons\">";
+            html += "<button type=\"button\" class=\"zoomReset" + (simple == "reset" ? " zoomDefault" : "") + "\">" + esc(graphStrings.applyZoomActionReset) + "</button>";
+            html += "<button type=\"button\" class=\"zoomKeep" + (simple == "keep" ? " zoomDefault" : "") + "\">" + esc(graphStrings.applyZoomActionKeep) + "</button>";
+            html += "<button type=\"button\" class=\"zoomMore\">" + esc(graphStrings.applyZoomMoreOptions) + "</button>";
+            html += "<button type=\"button\" class=\"zoomCancel\">" + esc(graphStrings.cancel) + "</button>";
+            html += "</div></div>";
+            var overlay = document.createElement("div");
+            overlay.className = "clearOverlay zoomOverlay";
+            overlay.innerHTML = html;
+            document.body.appendChild(overlay);
+            var close = function() {
+                if (overlay.parentNode)
+                    overlay.parentNode.removeChild(overlay);
+            };
+            var finish = function(actions, targets) {
+                close();
+                applyZoomChoice(g, actions, targets);
+                onDone();
+            };
+            var simpleActions = function(choice) {
+                return {x: initialAxisAction(g, "x", choice), y: initialAxisAction(g, "y", choice)};
+            };
+            var keepButton = overlay.querySelector(".zoomKeep"), resetButton = overlay.querySelector(".zoomReset"), moreButton = overlay.querySelector(".zoomMore");
+            overlay.querySelector(".zoomCancel").addEventListener("click", close);
+            resetButton.addEventListener("click", function() { finish(simpleActions("reset"), {}); });
+            keepButton.addEventListener("click", function() { finish(simpleActions("keep"), {}); });
+            moreButton.addEventListener("click", function() {
+                overlay.querySelector(".zoomOptions").style.display = "block";
+                moreButton.style.display = "none";
+                resetButton.style.display = "none";
+                keepButton.textContent = graphStrings.ok;
+                keepButton.classList.remove("zoomDefault");
+                var newKeep = keepButton.cloneNode(true); //drops the simple handler
+                keepButton.parentNode.replaceChild(newKeep, keepButton);
+                newKeep.addEventListener("click", function() {
+                    var actions = {x: "reset", y: "reset"}, targets = {};
+                    axes.forEach(function(a) {
+                        var checked = overlay.querySelector("input[name=zoomAction_" + a + "]:checked");
+                        actions[a] = checked ? checked.value : "reset";
+                        targets[a] = overlay.querySelector(".zoomTarget[data-axis=" + a + "]").value;
+                    });
+                    finish(actions, targets);
+                });
+            });
+            return true;
         }
 
         function updateToolbar(g) {
@@ -2419,17 +2702,32 @@
             var previewPending = false;
 
             //A plot that is not maximized has no interaction of its own: a tap or click maximizes it. Maximized, a
-            //click on an axis title area opens the unit dialog of that axis (units.md, "Switching a unit by hand")
+            //click on an axis title opens the unit dialog of that axis (units.md, "Switching a unit by hand"), and one
+            //elsewhere outside the plot leaves the maximized view like the label does; the plot belongs to the tools
+            var pressed = null;
+            canvas.addEventListener("pointerdown", function(e) { pressed = {x: e.clientX, y: e.clientY}; });
             canvas.addEventListener("click", function(e) {
                 if (!g.interactive) {
                     e.stopPropagation();
                     toggleExclusive(g.index);
                     return;
                 }
-                var axis = g.chart ? axisAt(g, canvasPosition(g.chart, e)) : null;
-                if (axis && axisConvertible(g, axis)) {
+                if (!g.chart)
+                    return;
+                if (pressed && Math.abs(e.clientX - pressed.x) + Math.abs(e.clientY - pressed.y) > 8)
+                    return; //the end of a drag, not a click
+                var pos = canvasPosition(g.chart, e);
+                var axis = axisAt(g, pos);
+                if (axis) {
+                    if (axisConvertible(g, axis)) {
+                        e.stopPropagation();
+                        PhyphoxUnits.showDialog(unitId(g, axis), g.displayUnit[axis], function(id) { setDisplayUnit(g.index, axis, id); });
+                    }
+                    return;
+                }
+                if (!insidePlot(g, pos)) {
                     e.stopPropagation();
-                    PhyphoxUnits.showDialog(unitId(g, axis), g.displayUnit[axis], function(id) { setDisplayUnit(g.index, axis, id); });
+                    toggleExclusive(g.index);
                 }
             });
 
@@ -3039,6 +3337,7 @@
                 displayUnit: g.displayUnit,
                 axisUnits: {x: unitSymbol(g, "x"), y: unitSymbol(g, "y"), z: unitSymbol(g, "z")},
                 userRange: g.userRange,
+                previouslyKept: g.previouslyKept,
                 picks: g.picks.map(function(p) { return {datasetIndex: p.datasetIndex, index: p.index, x: p.x, y: p.y}; }),
                 preview: g.preview ? {datasetIndex: g.preview.datasetIndex, index: g.preview.index} : null,
                 pointCounts: g.chart ? g.chart.data.datasets.map(function(d) { return d.data.length; }) : null
@@ -3057,6 +3356,7 @@
             cancelCal: cancelCal,
             clearPicks: clearPicks,
             setDisplayUnit: setDisplayUnit,
+            askKeepView: askKeepView,
             onMeasuringChanged: onMeasuringChanged
         };
     })();

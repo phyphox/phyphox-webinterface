@@ -927,6 +927,17 @@ const elementByLabel = label => page.evaluate(label => { let f = null; (function
 const unitState = idx => page.evaluate(i => PhyphoxUnits.state(i), idx);
 const valueText = idx => page.evaluate(i => { const e = document.getElementById('element' + i); return {number: e.querySelector('.valueNumber').textContent, unit: e.querySelector('.valueUnit').textContent}; }, idx);
 const editField = idx => page.evaluate(i => { const e = document.getElementById('element' + i); const f = e.querySelector('input.value'); return {value: f.value, min: f.getAttribute('min'), max: f.getAttribute('max'), unit: e.querySelector('.unit').textContent}; }, idx);
+// Page position of an axis title of a maximized graph, as Chart.js draws it: centred along the scale, half a line
+// height plus the padding in from the outer edge (title font 15 px, line height 18 px, padding 3 px at scale 1)
+const titlePos = (idx, axis) => page.evaluate((i, a) => {
+  const c = Chart.getChart(document.querySelector('#element' + i + ' canvas'));
+  const r = c.canvas.getBoundingClientRect();
+  const s = c.scales[a];
+  if (a === 'x') return {x: r.left + (s.left + s.right) / 2, y: r.top + s.bottom - 12};
+  return {x: r.left + s.left + 12, y: r.top + (s.top + s.bottom) / 2};
+}, idx, axis);
+// Page coordinates of the plot area
+const plotArea = idx => page.evaluate(i => { const c = Chart.getChart(document.querySelector('#element' + i + ' canvas')); const r = c.canvas.getBoundingClientRect(); return {left: r.left + c.chartArea.left, right: r.left + c.chartArea.right, top: r.top + c.chartArea.top, bottom: r.top + c.chartArea.bottom}; }, idx);
 const axisTitle = (idx, axis) => page.evaluate((i, a) => Chart.getChart(document.querySelector('#element' + i + ' canvas')).options.scales[a].title.text, idx, axis);
 const dialogChoices = () => page.evaluate(() => { const o = document.querySelector('.unitOverlay'); if (!o) return null; return {groups: Array.from(o.querySelectorAll('.unitGroup')).map(g => g.textContent), choices: Array.from(o.querySelectorAll('input[type=radio]')).map(r => ({id: r.value, checked: r.checked, label: r.parentNode.textContent}))}; });
 async function chooseUnit(id) {
@@ -1073,7 +1084,7 @@ test('units: an edit element converts its field and limits and sends the typed v
   assertNoErrors();
 });
 
-test('units: an axis of a maximized graph opens the dialog, converts the chart and the read-outs, and picks go back in the experiment\'s unit', async t => {
+test('units: an axis title of a maximized graph opens the dialog, converts the chart and the read-outs, and picks go back in the experiment\'s unit', async t => {
   const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
   if (idx === null || (await state(idx)).displayUnit.y !== 'meter_per_square_second') { t.skip('no logical units on the acceleration graph'); return; }
   await startMeasuring(2);
@@ -1081,9 +1092,9 @@ test('units: an axis of a maximized graph opens the dialog, converts the chart a
   await sleep(500);
   await maximize(idx);
   const before = await scales(idx);
-  // a click below the plot: the x axis
-  const area = await page.evaluate(i => { const c = Chart.getChart(document.querySelector('#element' + i + ' canvas')); const r = c.canvas.getBoundingClientRect(); return {left: r.left + c.chartArea.left, right: r.left + c.chartArea.right, top: r.top + c.chartArea.top, bottom: r.top + c.chartArea.bottom, canvasBottom: r.bottom, canvasLeft: r.left}; }, idx);
-  await page.mouse.click((area.left + area.right) / 2, (area.bottom + area.canvasBottom) / 2);
+  // a click on the x axis title below the plot
+  const tx = await titlePos(idx, 'x');
+  await page.mouse.click(tx.x, tx.y);
   await sleep(300);
   const dialog = await dialogChoices();
   assert.ok(dialog, 'the unit dialog of the x axis opened');
@@ -1094,8 +1105,9 @@ test('units: an axis of a maximized graph opens the dialog, converts the chart a
   const after = await scales(idx);
   near(width(after.x) / width(before.x), 1000, 1, 'the x range is in milliseconds now');
   assert.equal(await page.evaluate(() => document.body.classList.contains('exclusive')), true, 'the click did not leave the maximized view');
-  // the y axis: a click left of the plot
-  await page.mouse.click((area.canvasLeft + area.left) / 2, (area.top + area.bottom) / 2);
+  // the y axis: a click on its rotated title left of the plot
+  const ty = await titlePos(idx, 'y');
+  await page.mouse.click(ty.x, ty.y);
   await sleep(300);
   assert.equal((await dialogChoices()).choices.find(c => c.checked).id, 'meter_per_square_second');
   await chooseUnit('foot_per_square_second');
@@ -1118,8 +1130,9 @@ test('units: an axis of a maximized graph opens the dialog, converts the chart a
   const r = await api('get?accX=full&acc_time=full');
   near(s.picks[0].y, r.buffer.accX.buffer[s.picks[0].index] / 0.3048, 1e-3, 'picked y in ft/s²');
   near(s.picks[0].x, r.buffer.acc_time.buffer[s.picks[0].index] * 1000, 1e-3, 'picked x in ms');
-  // a click in the axis area does not deselect
-  await page.mouse.click((area.left + area.right) / 2, (area.bottom + area.canvasBottom) / 2);
+  // a click on an axis title does not deselect
+  const tx2 = await titlePos(idx, 'x');
+  await page.mouse.click(tx2.x, tx2.y);
   await sleep(300);
   assert.equal((await state(idx)).picks.length, 2, 'the picks survive a click on the axis');
   await page.click('.unitOverlay .unitCancel');
@@ -1184,5 +1197,186 @@ test('units: a pick output writes the buffer value while the axis shows another 
   const r = await api('get?pickedX=full&acc_time=full');
   near(r.buffer.pickedX.buffer[0], s.picks[0].x / 1000, 1e-6, 'the pick reaches the buffer in seconds');
   near(r.buffer.pickedX.buffer[0], r.buffer.acc_time.buffer[s.picks[0].index], 1e-6, 'and equals the buffer value');
+  assertNoErrors();
+});
+
+// ---- leaving a maximized graph: "Keep this view?" ----
+
+const zoomOverlay = () => page.evaluate(() => {
+  const o = document.querySelector('.zoomOverlay');
+  if (!o) return null;
+  return {
+    title: o.querySelector('.zoomTitle').textContent,
+    ranges: Array.from(o.querySelectorAll('.zoomBox > .zoomRange')).map(r => r.textContent),
+    optionsShown: o.querySelector('.zoomOptions').style.display !== 'none',
+    buttons: Array.from(o.querySelectorAll('.zoomButtons button')).filter(b => b.style.display !== 'none').map(b => b.textContent),
+    defaultButton: o.querySelector('.zoomDefault') ? o.querySelector('.zoomDefault').textContent : null
+  };
+});
+const exclusive = () => page.evaluate(() => document.body.classList.contains('exclusive'));
+const activeView = () => page.evaluate(() => Array.from(document.querySelectorAll('#viewSelector li')).findIndex(li => li.classList.contains('active')));
+
+// The acceleration graph maximized with a box zoom on static data
+async function zoomedAndMaximized(t) {
+  const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
+  if (idx === null) return null;
+  await startMeasuring(2);
+  await api('control?cmd=stop');
+  await sleep(500);
+  await maximize(idx);
+  await drag(400, 300, 800, 600, 'Shift');
+  const s = await state(idx);
+  assert.ok(s.userRange.x && s.userRange.y, 'the box zoom set both ranges');
+  return idx;
+}
+
+test('leaving a zoomed maximized graph asks "Keep this view?": Cancel stays, Reset clears the zoom, Keep keeps it', async t => {
+  const idx = await zoomedAndMaximized(t);
+  if (idx === null) return;
+  const before = (await state(idx)).userRange;
+  await page.click(sel(idx, '.label'));
+  await sleep(300);
+  let o = await zoomOverlay();
+  assert.ok(o, 'the question is shown');
+  assert.equal(o.title, 'Keep this view?');
+  assert.equal(o.ranges.length, 2, 'one range line per zoomed axis');
+  assert.match(o.ranges[0], /^t: -?[\d.]+ s to -?[\d.]+ s$/);
+  assert.match(o.ranges[1], /^a: -?[\d.]+ m\/s² to -?[\d.]+ m\/s²$/);
+  assert.deepEqual(o.buttons, ['Reset zoom', 'Keep this section', 'More options…', 'Cancel']);
+  assert.equal(o.defaultButton, 'Reset zoom');
+  assert.equal(await exclusive(), true, 'still maximized while asking');
+  await page.click('.zoomOverlay .zoomCancel');
+  await sleep(300);
+  assert.equal(await zoomOverlay(), null);
+  assert.equal(await exclusive(), true, 'Cancel stays in the maximized graph');
+  assert.deepEqual((await state(idx)).userRange, before);
+
+  await page.click(sel(idx, '.label'));
+  await sleep(300);
+  await page.click('.zoomOverlay .zoomReset');
+  await sleep(400);
+  assert.equal(await exclusive(), false);
+  assert.deepEqual((await state(idx)).userRange, {x: null, y: null}, 'Reset clears the zoom');
+  assert.equal((await state(idx)).previouslyKept, false);
+  assert.equal(await page.$eval(sel(idx, '.graphTool_reset'), b => b.disabled), true);
+
+  await maximize(idx);
+  await drag(400, 300, 800, 600, 'Shift');
+  const kept = (await state(idx)).userRange;
+  await page.click(sel(idx, '.label'));
+  await sleep(300);
+  await page.click('.zoomOverlay .zoomKeep');
+  await sleep(400);
+  assert.equal(await exclusive(), false);
+  assert.deepEqual((await state(idx)).userRange, kept, 'Keep keeps the zoomed section');
+  assert.equal((await state(idx)).previouslyKept, true);
+  const shown = await scales(idx);
+  near(shown.x[0], kept.x.min, 1e-6, 'the small graph shows the kept range');
+
+  // once kept, Keep is the emphasised button
+  await maximize(idx);
+  await page.click(sel(idx, '.label'));
+  await sleep(300);
+  assert.equal((await zoomOverlay()).defaultButton, 'Keep this section');
+  await page.click('.zoomOverlay .zoomReset');
+  await sleep(300);
+  await shot('keep-view');
+  assertNoErrors();
+});
+
+test('no question when nothing is zoomed, also after toggling the clock display', async t => {
+  const idx = await requireGraph(t, 'System time axis');
+  if (idx === null) return;
+  await startMeasuring(1.5);
+  await maximize(idx);
+  await page.click(sel(idx, '.graphTool_systemTime'));
+  await sleep(300);
+  await page.click(sel(idx, '.label'));
+  await sleep(300);
+  assert.equal(await zoomOverlay(), null, 'no question without a zoom');
+  assert.equal(await exclusive(), false);
+  assertNoErrors();
+});
+
+test('"More options" applies the kept range to other graphs with the same data or the same unit', async t => {
+  const idx = await zoomedAndMaximized(t);
+  if (idx === null) return;
+  const sameUnit = await graphByLabel('Deprecated placeholder'); // y in m/s² like the source, x the same time buffer
+  const temperature = await graphByLabel('Temperature'); // y in °C, x the same time buffer
+  const follow = await graphByLabel('Follow x (5 s)'); // text units, x the same time buffer
+  if (sameUnit === null || temperature === null || follow === null) { t.skip('needs the mock graphs'); return; }
+  const src = (await state(idx)).userRange;
+  await page.click(sel(idx, '.label'));
+  await sleep(300);
+  await page.click('.zoomOverlay .zoomMore');
+  await sleep(200);
+  const o = await zoomOverlay();
+  assert.equal(o.optionsShown, true);
+  assert.deepEqual(o.buttons, ['OK', 'Cancel']);
+  const checked = await page.evaluate(() => Array.from(document.querySelectorAll('.zoomOverlay input[type=radio]:checked')).map(r => r.name + '=' + r.value));
+  assert.deepEqual(checked, ['zoomAction_x=reset', 'zoomAction_y=reset'], 'the controls start from the emphasised button');
+  const options = await page.evaluate(() => Array.from(document.querySelector('.zoomOverlay .zoomTarget[data-axis=y]').options).map(o => o.textContent));
+  assert.deepEqual(options, ['this graph only', 'the same data', 'the same unit (m/s²)', 'any y axis']);
+  assert.ok(await page.$('.zoomOverlay input[name=zoomAction_x][value=follow]'), 'follow offered on the incremental x axis');
+  await page.click('.zoomOverlay input[name=zoomAction_x][value=keep]');
+  await page.click('.zoomOverlay input[name=zoomAction_y][value=keep]');
+  await page.select('.zoomOverlay .zoomTarget[data-axis=x]', 'sameData');
+  await page.select('.zoomOverlay .zoomTarget[data-axis=y]', 'sameUnit');
+  await page.click('.zoomOverlay .zoomKeep'); // now reads OK
+  await sleep(500);
+  assert.equal(await exclusive(), false);
+  assert.deepEqual((await state(idx)).userRange, src);
+  const other = (await state(sameUnit)).userRange;
+  near(other.y.min, src.y.min, 1e-9, 'same unit: y range applied');
+  near(other.y.max, src.y.max, 1e-9, 'same unit: y range applied');
+  near(other.x.min, src.x.min, 1e-9, 'same data: x range applied through the shared time buffer');
+  const f = (await state(follow)).userRange;
+  near(f.x.min, src.x.min, 1e-9, 'same data: x range applied to the follow graph');
+  assert.equal(f.y, null, 'a text unit is not the same unit');
+  const temp = (await state(temperature)).userRange;
+  assert.equal(temp.y, null, 'another quantity is not touched');
+  near(temp.x.min, src.x.min, 1e-9, 'same data: the temperature graph shares the time buffer');
+  assertNoErrors();
+});
+
+test('a click outside the plot that is not on an axis title leaves the maximized graph', async t => {
+  const idx = await requireGraph(t, 'Acceleration (partial, 3 datasets)');
+  if (idx === null) return;
+  await startMeasuring(1.5);
+  await maximize(idx);
+  const tx = await titlePos(idx, 'x');
+  const area = await plotArea(idx);
+  await page.mouse.click(area.left + 20, tx.y); // the tic label row, far from the centred title
+  await sleep(300);
+  assert.equal(await dialogChoices(), null, 'no unit dialog off the title');
+  assert.equal(await exclusive(), false, 'a click beside the title leaves the maximized graph');
+  await maximize(idx);
+  const ty = await titlePos(idx, 'y');
+  await page.mouse.click(ty.x, area.top + 5); // left of the plot, above the rotated title
+  await sleep(300);
+  assert.equal(await exclusive(), false);
+  assertNoErrors();
+});
+
+test('switching views while a zoomed graph is maximized asks first; Cancel stays, an answer switches', async t => {
+  const idx = await zoomedAndMaximized(t);
+  if (idx === null) return;
+  if (await page.evaluate(() => document.querySelectorAll('#viewSelector li').length) < 2) { t.skip('one view only'); return; }
+  await page.click('#viewSelector li:nth-child(2)');
+  await sleep(300);
+  assert.ok(await zoomOverlay(), 'the question comes first');
+  assert.equal(await exclusive(), true);
+  assert.equal(await activeView(), 0);
+  await page.click('.zoomOverlay .zoomCancel');
+  await sleep(300);
+  assert.equal(await exclusive(), true, 'Cancel stays on the maximized graph');
+  assert.equal(await activeView(), 0);
+  await page.click('#viewSelector li:nth-child(2)');
+  await sleep(300);
+  await page.click('.zoomOverlay .zoomReset');
+  await sleep(800);
+  assert.equal(await exclusive(), false);
+  assert.equal(await activeView(), 1, 'the view switched after the answer');
+  assert.ok(await page.evaluate(() => document.querySelectorAll('#views canvas').length) >= 1);
   assertNoErrors();
 });

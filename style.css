@@ -414,8 +414,13 @@ ul {
     padding-left: 2em;
 }
 
+/* Maximized: the restore icon is twice the size of the maximize icon so the way back is noticed */
 .graphElement.exclusive .label {
     background-image: url(data:image/png;base64,###drawableRestore###);
+    background-size: auto 2em;
+    padding-left: 2.6em;
+    min-height: 2em;
+    line-height: 2em;
 }
 
 .graphElement .graphBox {
@@ -801,4 +806,61 @@ ul {
 .unitBox .unitChoice {
     display: block;
     padding: 0.2em 0;
+}
+
+/* "Keep this view?" when a zoomed maximized graph is left (PhyphoxGraph.askKeepView) */
+.zoomBox {
+    max-width: 24em;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.zoomBox .zoomTitle {
+    font-weight: bold;
+    font-size: 110%;
+    margin-top: 0;
+}
+
+.zoomBox .zoomRange {
+    margin: 0.3em 0;
+    font-family: monospace;
+}
+
+.zoomBox .zoomAxis {
+    margin-top: 1em;
+    padding-top: 0.6em;
+    border-top: 1px solid #606060;
+}
+
+.zoomBox .zoomAxis .zoomRange {
+    font-weight: bold;
+}
+
+.zoomBox .zoomChoice {
+    display: block;
+    padding: 0.2em 0;
+}
+
+.zoomBox .zoomAlso {
+    margin: 0.6em 0 0.2em 0;
+}
+
+.zoomBox .zoomTarget {
+    max-width: 100%;
+    font-size: 1em;
+}
+
+.zoomBox .zoomButtons {
+    margin-top: 1em;
+    text-align: right;
+}
+
+.zoomBox .zoomButtons button {
+    margin: 0.2em 0 0.2em 0.4em;
+    min-height: 2.4em;
+    min-width: 5em;
+}
+
+.zoomBox .zoomDefault {
+    font-weight: bold;
 }
