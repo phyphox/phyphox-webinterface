@@ -1207,7 +1207,7 @@ const zoomOverlay = () => page.evaluate(() => {
   if (!o) return null;
   return {
     title: o.querySelector('.zoomTitle').textContent,
-    ranges: Array.from(o.querySelectorAll('.zoomBox > .zoomRange')).map(r => r.textContent),
+    ranges: Array.from(o.querySelectorAll('.zoomAxis > .zoomRange')).map(r => r.textContent),
     optionsShown: o.querySelector('.zoomOptions').style.display !== 'none',
     buttons: Array.from(o.querySelectorAll('.zoomButtons button')).filter(b => b.style.display !== 'none').map(b => b.textContent),
     defaultButton: o.querySelector('.zoomDefault') ? o.querySelector('.zoomDefault').textContent : null
@@ -1239,9 +1239,10 @@ test('leaving a zoomed maximized graph asks "Keep this view?": Cancel stays, Res
   let o = await zoomOverlay();
   assert.ok(o, 'the question is shown');
   assert.equal(o.title, 'Keep this view?');
-  assert.equal(o.ranges.length, 2, 'one range line per zoomed axis');
+  assert.equal(o.ranges.length, 2, 'one axis section per zoomed axis, headed by its range');
   assert.match(o.ranges[0], /^t: -?[\d.]+ s to -?[\d.]+ s$/);
   assert.match(o.ranges[1], /^a: -?[\d.]+ m\/s² to -?[\d.]+ m\/s²$/);
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.zoomBox > .zoomRange').length), 0, 'no range lines under the question');
   assert.deepEqual(o.buttons, ['Reset zoom', 'Keep this section', 'More options…', 'Cancel']);
   assert.equal(o.defaultButton, 'Reset zoom');
   assert.equal(await exclusive(), true, 'still maximized while asking');

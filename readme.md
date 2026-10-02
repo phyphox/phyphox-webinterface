@@ -231,8 +231,9 @@ Placeholders are accepted in the Java form (`%1$s`, `%s`) and the Swift form (`%
 
 A click on the label, on the plot's surroundings (outside the plot area and off the axis titles) or
 on another view's tab leaves the maximized graph. If the user has zoomed, the interface first asks
-"Keep this view?" with the zoomed range of each axis, as the apps do: "Reset zoom" and "Keep this
-section" answer directly, "More options…" offers reset / keep / keep and follow new data per axis and
+"Keep this view?", as the apps do: "Reset zoom" and "Keep this section" answer directly, "More
+options…" offers reset / keep / keep and follow new data per axis, each axis headed by its label
+and zoomed range in the display unit as the tick labels would show it, and
 "Also apply to other graphs with…" the same data (the same input buffer), the same unit (the range
 converted between display units) or any axis of the same kind, among the graphs of the current view.
 Cancel stays in the maximized graph; a view switch or a layout change waits for the answer. No

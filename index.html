@@ -2416,8 +2416,9 @@
 
         /*
          * "Keep this view?" when a maximized graph with a zoom is left, with the apps' semantics: two direct buttons,
-         * "More options…" for per-axis reset / keep / follow and applying the range to other graphs of the view with the
-         * same data (buffer), the same unit (converted) or on the same axis. No question without a zoom.
+         * "More options…" for per-axis reset / keep / follow (each axis section headed by its label and zoomed range) and
+         * applying the range to other graphs of the view with the same data (buffer), the same unit (converted) or on the
+         * same axis. No question without a zoom.
          */
         function formatString(template, args) {
             var i = 0;
@@ -2537,9 +2538,6 @@
             var simple = g.previouslyKept ? "keep" : "reset";
             var esc = escapeHTML;
             var html = "<div class=\"clearBox zoomBox\"><p class=\"zoomTitle\">" + esc(graphStrings.applyZoomQuestionTitle) + "</p><p>" + esc(graphStrings.applyZoomQuestion) + "</p>";
-            axes.forEach(function(a) {
-                html += "<p class=\"zoomRange\">" + esc(zoomRangeLine(g, a)) + "</p>";
-            });
             html += "<div class=\"zoomOptions\" style=\"display:none;\">";
             axes.forEach(function(a) {
                 var initial = initialAxisAction(g, a, simple);
