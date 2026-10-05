@@ -588,6 +588,26 @@ ul {
     display: block;
 }
 
+/* Drawing elements (file format 1.21, phyphox-docs views/drawing.md): a canvas per element, the full width and
+   width / aspectRatio tall (set by the page). The label of a convertible scale is a positioned hit box that takes
+   clicks even inside a stack, where everything else is pointer-events: none; a scale in a transform has none. */
+.geometryElement, .scaleElement {
+    position: relative;
+    width: 100%;
+    line-height: 0;
+}
+
+.geometryElement canvas, .scaleElement canvas {
+    display: block;
+    width: 100%;
+}
+
+.scaleElement .scaleLabel {
+    position: absolute;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
 .darkFilter_invert, .brightMode .lightFilter_invert {
     filter: invert(1);
 }

@@ -1381,3 +1381,206 @@ test('switching views while a zoomed graph is maximized asks first; Cancel stays
   assert.ok(await page.evaluate(() => document.querySelectorAll('#views canvas').length) >= 1);
   assertNoErrors();
 });
+
+// ---- drawing elements (file format 1.21): the "Drawing" view of the mock and of fixtures/webgraphs.phyphox ----
+
+const block = n => `#views > .elementBlock:nth-child(${n})`;
+const drawingState = idx => page.evaluate(i => PhyphoxDrawing.state(i), idx);
+// The pixel of an element's canvas at fractions of its box, as [r, g, b, a]
+const pixel = (sel, fx, fy) => page.evaluate((sel, fx, fy) => {
+  const c = document.querySelector(sel + ' canvas');
+  const d = c.getContext('2d').getImageData(Math.round(fx * (c.width - 1)), Math.round(fy * (c.height - 1)), 1, 1).data;
+  return Array.from(d);
+}, sel, fx, fy);
+// Page position of the centre of a scale's label hit rectangle, with the element scrolled into the viewport first
+const labelCentre = idx => page.evaluate(i => {
+  const el = document.getElementById('element' + i);
+  el.scrollIntoView({block: 'center'});
+  const s = PhyphoxDrawing.state(i);
+  const r = el.getBoundingClientRect();
+  return {x: r.left + s.labelRect.left + s.labelRect.width / 2, y: r.top + s.labelRect.top + s.labelRect.height / 2};
+}, idx);
+const majorTexts = s => s.tics.filter(t => t.major).map(t => t.text);
+const majorValues = s => s.tics.filter(t => t.major).map(t => t.value);
+
+test('drawing: a geometry is the full width and width / aspectRatio tall, fills with color, outlines with lineColor, clips to its box and turns in a transform', async t => {
+  if (!(await requireView(t, 'Drawing'))) return;
+  const gauge = block(1) + ' > .group_stack';
+  const face = gauge + ' > .geometryElement:nth-of-type(1)';
+  const band = gauge + ' > .geometryElement:nth-of-type(2)';
+  const stack = await rect(gauge), faceBox = await rect(face + ' canvas');
+  near(faceBox.width, stack.width, 1, 'the full width');
+  near(faceBox.height, faceBox.width, 1, 'a square by default');
+  // the face: filled 202020 at the centre, its orange rim at the radius, nothing in the corner (dark mode: colours as given)
+  assert.deepEqual(await pixel(face, 0.5, 0.5), [0x20, 0x20, 0x20, 255]);
+  const rim = await pixel(face, 0.5 + 0.48, 0.5);
+  assert.ok(rim[0] > 200 && rim[1] > 80 && rim[1] < 160 && rim[2] < 80 && rim[3] > 200, 'orange rim: ' + rim);
+  assert.equal((await pixel(face, 0.02, 0.02))[3], 0, 'transparent outside the circle');
+  // the band from 90° to 135° between the radii 0.4 and 0.45, with its alpha byte
+  const a = 1.57 + 0.79 / 2, r = 0.425;
+  const onBand = await pixel(band, 0.5 + r * Math.sin(a), 0.5 - r * Math.cos(a));
+  assert.ok(onBand[0] > 240 && onBand[1] < 10 && Math.abs(onBand[2] - 0x5d) < 6 && Math.abs(onBand[3] - 128) < 4, 'band colour with alpha: ' + onBand);
+  assert.equal((await pixel(band, 0.5 + r * Math.sin(0.785), 0.5 - r * Math.cos(0.785)))[3], 0, 'nothing at 45°');
+  assert.equal((await pixel(band, 0.5 + 0.3 * Math.sin(a), 0.5 - 0.3 * Math.cos(a)))[3], 0, 'nothing inside the inner radius');
+  // the rounded trough of the thermometer: a quarter as tall as wide, filled, the corner cut by the radius, outlined
+  const trough = block(2) + ' .geometryElement';
+  const troughBox = await rect(trough + ' canvas');
+  near(troughBox.height, troughBox.width / 4, 1, 'aspectRatio 4');
+  assert.deepEqual(await pixel(trough, 0.5, 0.4), [0x30, 0x30, 0x30, 255]);
+  assert.equal((await pixel(trough, 0.05, 0.2))[3], 0, 'the corner is rounded away');
+  assert.equal((await pixel(trough, 0.5, 0.1))[3], 0, 'above the rectangle');
+  const outline = await pixel(trough, 0.5, 0.2);
+  assert.ok(outline[0] > 200 && outline[2] < 80, 'orange outline on the top edge: ' + outline);
+  // a line in color when there is no lineColor, with square ends that stop at its points
+  const line = block(3) + ' .geometryElement';
+  assert.deepEqual(await pixel(line, 0.5, 0.5), [0x39, 0xa2, 0xff, 255], 'the named colour blue as the app resolves it');
+  assert.equal((await pixel(line, 0.05, 0.95))[3], 0, 'nothing beyond the start point');
+  // the needle turns about the centre: 100 % is 135° clockwise
+  await post('set', {buffers: {percent: [100]}});
+  await sleep(800);
+  const m = await matrix(gauge + ' > .group_transform');
+  near(m[0], Math.cos(2.3562), 0.01, 'rotated a'); near(m[1], Math.sin(2.3562), 0.01, 'rotated b');
+  await post('set', {buffers: {percent: [42]}});
+  await sleep(300);
+  assertNoErrors();
+});
+
+test('drawing: a scale lays its tics out from min by ticStep with minor tics between, values at every n-th tic, labels "label (unit)", leaves parts out at 0 and re-ranges from bound containers', async t => {
+  if (!(await requireView(t, 'Drawing'))) return;
+  await sleep(500);
+  const load = await drawingState(await elementByLabel('Load'));
+  assert.equal(load.kind, 'scale');
+  assert.equal(load.convertible, false, 'a text unit');
+  assert.equal(load.label, 'Load (%)');
+  assert.deepEqual(majorValues(load), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+  assert.deepEqual(majorTexts(load), ['0', null, '20', null, '40', null, '60', null, '80', null, '100'], 'every second tic has its value, with precision 0');
+  assert.equal(load.tics.filter(tic => !tic.major).length, 40, 'four minor tics per step');
+  near(load.tics[0].fraction, 0, 1e-9, 'min at the start'); near(load.tics[10].fraction, 1, 1e-9, 'max at the end');
+  assert.equal(await page.$(`#element${await elementByLabel('Load')} .scaleLabel`), null, 'no tap target on a text unit');
+  const temperature = await drawingState(await elementByLabel('Temperature'));
+  assert.equal(temperature.label, 'Temperature (°C)');
+  assert.deepEqual(majorTexts(temperature), ['-20', '-10', '0', '10', '20', '30', '40', '50', '60']);
+  assert.equal(temperature.tics.filter(tic => !tic.major).length, 8);
+  // without a label the unit alone, and a step of 0.25 needs two decimals
+  const vertical = await drawingState(await page.evaluate(() => parseInt(document.querySelector('#views > .elementBlock:nth-child(3) .scaleElement').id.substring(7))));
+  assert.equal(vertical.label, 'm/s²');
+  assert.deepEqual(majorTexts(vertical), ['0.00', '0.25', '0.50', '0.75', '1.00']);
+  // valueEvery 0: tics without values; lineWidth 0 and ticLength 0 draw nothing
+  const heading = await drawingState(await elementByLabel('Heading'));
+  assert.deepEqual(majorValues(heading), [0, 90, 180, 270, 360]);
+  assert.ok(heading.tics.every(tic => tic.text === null));
+  // the bound range: -10 from "lower", 250 from "upper", automatic tics, the baseline from min to max
+  const rangeIdx = await elementByLabel('Range');
+  let range = await drawingState(rangeIdx);
+  assert.equal(range.min, -10); assert.equal(range.max, 250);
+  assert.equal(majorValues(range)[0], 0);
+  assert.equal(majorValues(range)[majorValues(range).length - 1], 250);
+  range.tics.forEach(tic => near(tic.fraction, (tic.value + 10) / 260, 1e-9, 'tic position'));
+  await post('set', {buffers: {upper: [50]}});
+  await sleep(800);
+  range = await drawingState(rangeIdx);
+  assert.equal(range.max, 50);
+  assert.deepEqual(majorValues(range), [-10, 0, 10, 20, 30, 40, 50]);
+  near(range.tics[0].fraction, 0, 1e-9, 'min still at the start'); near(range.tics[6].fraction, 1, 1e-9, 'max still at the end');
+  // an empty or NaN container leaves the attribute value
+  await post('set', {buffers: {upper: []}});
+  await sleep(800);
+  assert.equal((await drawingState(rangeIdx)).max, 100);
+  await post('set', {buffers: {lower: [null]}});
+  await sleep(800);
+  assert.equal((await drawingState(rangeIdx)).min, 0);
+  await post('set', {buffers: {lower: [-10], upper: [250]}});
+  await sleep(300);
+  await shot('drawing');
+  assertNoErrors();
+});
+
+test('drawing: the label of an untransformed scale in a stack opens the unit dialog, also under a needle; a click elsewhere on the stack does nothing', async t => {
+  if (!(await requireView(t, 'Drawing'))) return;
+  await sleep(500);
+  const distance = await elementByLabel('Distance');
+  const state0 = await drawingState(distance);
+  assert.equal(state0.convertible, true);
+  assert.equal(state0.label, 'Distance (m)');
+  // the label sits at the centre of the stack, where the needle's pivot and the hub are drawn over it
+  const centre = await labelCentre(distance);
+  const topmost = await page.evaluate((x, y) => document.elementFromPoint(x, y).className, centre.x, centre.y);
+  assert.equal(topmost, 'scaleLabel', 'the hit box is what the click reaches, not the hub above it');
+  await page.mouse.click(centre.x, centre.y);
+  await sleep(300);
+  const dialog = await dialogChoices();
+  assert.ok(dialog, 'the unit dialog opened');
+  assert.equal(dialog.choices.find(c => c.checked).id, 'meter');
+  await chooseUnit('foot');
+  const converted = await drawingState(distance);
+  assert.equal(converted.displayUnitId, 'foot');
+  assert.equal(converted.label, 'Distance (ft)');
+  assert.equal(converted.max, 10, 'the range keeps its ends');
+  const last = converted.tics.filter(tic => tic.major).pop();
+  near(parseFloat(last.text), last.value / 0.3048, 1e-6, 'the value at the tic is in feet');
+  near(last.fraction, last.value / 10, 1e-9, 'at the position of its metre value');
+  // the transformed scale has no hit box, and the rest of the stack takes no clicks
+  assert.equal(await page.$(`#element${await elementByLabel('Time')} .scaleLabel`), null);
+  const stack = await rect(block(6) + ' > .group_stack');
+  await page.mouse.click(stack.left + stack.width * 0.1, stack.top + stack.height * 0.1);
+  await sleep(300);
+  assert.equal(await dialogChoices(), null, 'no dialog from the stack itself');
+  // the choice is page-local
+  await page.reload({waitUntil: 'load'});
+  await sleep(500);
+  if (await requireView(t, 'Drawing'))
+    assert.equal((await drawingState(await elementByLabel('Distance'))).label, 'Distance (m)');
+  assertNoErrors();
+});
+
+test('drawing: the imperial setting shows a Celsius scale in Fahrenheit at automatic tics in the same geometry', async t => {
+  if (!(await loadWithSetting(t, 'imperial'))) return;
+  if (!(await requireView(t, 'Drawing'))) return;
+  await sleep(500);
+  const temperature = await drawingState(await elementByLabel('Temperature'));
+  assert.equal(temperature.displayUnitId, 'degree_fahrenheit');
+  assert.equal(temperature.label, 'Temperature (°F)');
+  assert.equal(temperature.min, -20); assert.equal(temperature.max, 60);
+  const majors = temperature.tics.filter(tic => tic.major);
+  assert.ok(majors.length >= 3, 'automatic tics');
+  assert.equal(majors[0].text, '0', 'the first nice Fahrenheit value above -4 °F');
+  majors.forEach(tic => {
+    assert.match(tic.text, /^-?\d+$/, 'integer values');
+    near(parseFloat(tic.text), tic.value * 1.8 + 32, 1e-6, 'converted with the offset');
+    near(tic.fraction, (tic.value + 20) / 80, 1e-9, 'at the Celsius position');
+  });
+  const range = await drawingState(await elementByLabel('Range'));
+  assert.equal(range.label, 'Range (ft)');
+  // the dialog from the label; another unit of the same quantity
+  const centre = await labelCentre(await elementByLabel('Temperature'));
+  await page.mouse.click(centre.x, centre.y);
+  await sleep(300);
+  assert.equal((await dialogChoices()).choices.find(c => c.checked).id, 'degree_fahrenheit');
+  await chooseUnit('kelvin');
+  const kelvin = await drawingState(await elementByLabel('Temperature'));
+  assert.equal(kelvin.label, 'Temperature (K)');
+  kelvin.tics.filter(tic => tic.major).forEach(tic => near(parseFloat(tic.text), tic.value + 273.15, 1e-6, 'kelvin'));
+  assertNoErrors();
+});
+
+test('drawing: a resize redraws the canvases at the new width', async t => {
+  if (!(await requireView(t, 'Drawing'))) return;
+  // one column: the blocks take the full width (the phone layout's blocks are 57 vh wide, a layout setting persists
+  // between the tests, so the layout is pinned here)
+  await page.evaluate(() => switchColumns(1));
+  await sleep(800);
+  const face = block(1) + ' > .group_stack > .geometryElement:nth-of-type(1)';
+  const before = await rect(face + ' canvas');
+  await page.setViewport({width: 700, height: 900, deviceScaleFactor: 1});
+  await sleep(800);
+  const after = await rect(face + ' canvas');
+  assert.ok(after.width < before.width - 50, `narrower: ${after.width} < ${before.width}`);
+  near(after.height, after.width, 1, 'still a square');
+  const state = await drawingState(await elementByLabel('Load'));
+  near(state.width, after.width, 1, 'drawn at the new width');
+  await page.setViewport({width: 1400, height: 900, deviceScaleFactor: 1});
+  await sleep(300);
+  await page.evaluate(() => switchToPhoneLayout());
+  await sleep(300);
+  assertNoErrors();
+});

@@ -18,6 +18,9 @@
         <container size="1" init="1.5">distance</container>
         <container size="1" init="2">height</container>
         <container size="1" init="0.5">length</container>
+        <container size="1" init="42">percent</container>
+        <container size="1" init="-10">lower</container>
+        <container size="1" init="250">upper</container>
     </data-containers>
     <input>
         <sensor type="accelerometer" rate="50">
@@ -93,6 +96,67 @@
                 <input axis="x">acc_time</input>
                 <input axis="y">acc</input>
             </graph>
+        </view>
+        <!-- the drawing elements (file format 1.21): the same elements as in the mock's "Drawing" view, which
+             follows phyphox-docs corpus/generated/view-drawing.phyphox plus a convertible scale under a needle -->
+        <view label="Drawing">
+            <stack>
+                <geometry shape="circle" centerX="0.5" centerY="0.5" radius="0.48" color="202020" lineColor="ff7e22" lineWidth="0.01" />
+                <geometry shape="arc" centerX="0.5" centerY="0.5" radius="0.45" innerRadius="0.4" startAngle="1.57" sweepAngle="0.79" color="fe005d80" />
+                <scale shape="circular" min="0" max="100" ticStep="10" minorTics="4" centerX="0.5" centerY="0.5" radius="0.42"
+                       startAngle="-2.3562" sweepAngle="4.7124" lineWidth="0.005" ticLength="-0.04" minorTicLength="-0.02"
+                       valueEvery="2" valueDistance="-0.11" precision="0" size="0.8" color="white" valueOrientation="radial"
+                       label="Load" unit="%" labelPositionX="0.5" labelPositionY="0.72" />
+                <transform originX="0.5" originY="0.5">
+                    <input as="rotate" min="0" max="100" mapMin="-2.3562" mapMax="2.3562" clamp="true">percent</input>
+                    <geometry shape="line" startX="0.5" startY="0.5" endX="0.5" endY="0.12" lineColor="ff7e22" lineWidth="0.015" />
+                </transform>
+                <geometry shape="circle" radius="0.04" color="orange" />
+                <value unit="%" size="2" align="center"><input>percent</input></value>
+            </stack>
+            <vertical>
+                <geometry shape="rectangle" aspectRatio="4" left="0.05" top="0.2" right="0.95" bottom="0.6" cornerRadius="0.05" color="303030" lineColor="ff7e22" lineWidth="0.004" />
+                <scale shape="linear" aspectRatio="4" min="-20" max="60" ticStep="10" minorTics="1" unit="@degree_celsius"
+                       startX="0.05" startY="0.25" endX="0.95" endY="0.25"
+                       ticLength="0.03" minorTicLength="0.015" valueDistance="0.08" label="Temperature" labelPositionX="0.5" labelPositionY="0.88" />
+            </vertical>
+            <horizontal>
+                <geometry shape="line" startX="0.1" startY="0.9" endX="0.9" endY="0.1" color="blue" lineWidth="0.02" />
+                <scale shape="linear" min="0" max="1" startX="0.5" startY="0.9" endX="0.5" endY="0.1" ticStep="0.25" unit="m/s²" weight="2" valueOrientation="tangential" />
+            </horizontal>
+            <grid maxWidth="20">
+                <geometry />
+                <scale shape="circular" min="0" max="360" ticStep="90" lineWidth="0" ticLength="0" valueEvery="0" sweepAngle="-6.2832" label="Heading" />
+                <scale shape="circular" min="0" max="100" unit="@meter" valueOrientation="tangential" label="Range">
+                    <input as="min">lower</input>
+                    <input as="max">upper</input>
+                </scale>
+            </grid>
+            <stack>
+                <geometry shape="rectangle" aspectRatio="6" cornerRadius="0.08" color="303030" />
+                <transform originX="0" originY="0.5">
+                    <input as="scaleX" min="0" max="100" clamp="true">percent</input>
+                    <geometry shape="rectangle" aspectRatio="6" cornerRadius="0.08" color="2bfb4c" />
+                </transform>
+                <transform>
+                    <input as="rotate" min="0" max="360" mapMin="0" mapMax="6.2832">percent</input>
+                    <scale shape="circular" aspectRatio="6" min="0" max="100" radius="0.05" />
+                </transform>
+                <scale aspectRatio="6" min="0" max="100" ticStep="25" startX="0" startY="0.5" endX="1" endY="0.5" ticLength="0.02" valueDistance="-0.05" unit="%" />
+            </stack>
+            <stack>
+                <geometry shape="circle" radius="0.48" color="202020" />
+                <scale shape="circular" min="0" max="10" unit="@meter" label="Distance" labelPositionX="0.5" labelPositionY="0.5" />
+                <transform originX="0.5" originY="0.5">
+                    <input as="rotate" min="0" max="100" mapMin="0" mapMax="3.14">percent</input>
+                    <geometry shape="line" startX="0.5" startY="0.5" endX="0.5" endY="0.1" lineColor="ff7e22" lineWidth="0.02" />
+                </transform>
+                <transform>
+                    <input as="opacity" min="0" max="100">percent</input>
+                    <scale shape="linear" min="0" max="1" unit="@second" label="Time" labelPositionX="0.5" labelPositionY="0.9" />
+                </transform>
+                <geometry shape="circle" radius="0.04" color="orange" />
+            </stack>
         </view>
     </views>
     <export>

@@ -567,6 +567,471 @@
         };
     })();
 
+    /*
+     * Drawing elements
+     *
+     * The app describes a geometry (a static shape) and a scale (the axis of a gauge) with a JSON object ("geometry"
+     * / "scale" in the view layout, see readme.md); the page draws them on a canvas per element, redrawn on a resize
+     * and on a unit switch. Coordinates follow the file format (phyphox-docs views/drawing.md): positions as
+     * fractions of the box per axis, lengths as fractions of the width, angles in radians clockwise from twelve
+     * o'clock. A scale with a unit reference takes part in the unit conversion like a graph axis: a click on its
+     * label opens the unit dialog, also inside a stack as long as the scale is not wrapped in a transform.
+     */
+    var PhyphoxDrawing = (function() {
+        var elements = {}; //index -> state
+        var observer = (typeof ResizeObserver !== "undefined") ? new ResizeObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.target.phyphoxDrawing)
+                    draw(entry.target.phyphoxDrawing);
+            });
+        }) : null;
+
+        function isFiniteNumber(v) {
+            return typeof v === "number" && isFinite(v);
+        }
+
+        //The "nice" step between the major tics of a linear axis and the decimals its labels need (GraphView.linearTicStep)
+        function linearTicStep(range, maxTics) {
+            var exponent = Math.floor(Math.log10(range)) - 1;
+            var stepFactor = Math.pow(10, exponent);
+            var steps = range / stepFactor;
+            var step = 1, precision = 0;
+            if (steps <= maxTics) { step = stepFactor; precision = -exponent; }
+            else if (steps <= maxTics * 2) { step = 2 * stepFactor; precision = -exponent; }
+            else if (steps <= maxTics * 5) { step = 5 * stepFactor; precision = -exponent; }
+            else if (steps <= maxTics * 10) { step = 10 * stepFactor; precision = -exponent - 1; }
+            else if (steps <= maxTics * 20) { step = 20 * stepFactor; precision = -exponent - 1; }
+            else if (steps <= maxTics * 50) { step = 50 * stepFactor; precision = -exponent - 1; }
+            else if (steps <= maxTics * 100) { step = 100 * stepFactor; precision = -exponent - 2; }
+            return {step: step, precision: precision};
+        }
+
+        //How many decimals a step needs to be written exactly: 10 -> 0, 0.25 -> 2
+        function decimalsFor(step) {
+            if (!(step > 0))
+                return 0;
+            for (var d = 0; d < 10; d++) {
+                var scaled = step * Math.pow(10, d);
+                if (Math.abs(scaled - Math.round(scaled)) < 1e-6 * Math.max(1, scaled))
+                    return d;
+            }
+            return 10;
+        }
+
+        //The number of major tics the automatic step aims at: one per five text heights of baseline, at least two
+        function maxTicsFor(baselinePx, textPx) {
+            if (!(textPx > 0))
+                return 2;
+            return Math.max(2, Math.floor(baselinePx / (5 * textPx)));
+        }
+
+        function formatValue(shown, decimals) {
+            if (Math.abs(shown) < Math.pow(10, -decimals) / 2)
+                shown = 0;
+            return shown.toFixed(decimals);
+        }
+
+        function isConverted(state) {
+            return state.convertible && state.displayUnitId != null && state.displayUnitId != state.cfg.unit.id;
+        }
+
+        function toDisplay(state, v) {
+            return isConverted(state) ? PhyphoxUnits.convert(v, state.cfg.unit.id, state.displayUnitId) : v;
+        }
+
+        function fromDisplay(state, v) {
+            return isConverted(state) ? PhyphoxUnits.convert(v, state.displayUnitId, state.cfg.unit.id) : v;
+        }
+
+        function displaySymbol(state) {
+            if (isConverted(state))
+                return PhyphoxUnits.symbol(state.displayUnitId);
+            return state.cfg.unit ? PhyphoxUnits.unitText(state.cfg.unit) : "";
+        }
+
+        //"label (unit)", or either part alone
+        function labelText(state) {
+            var symbol = displaySymbol(state);
+            var label = state.ve.label || "";
+            if (label == "")
+                return symbol;
+            if (symbol == "")
+                return label;
+            return label + " (" + symbol + ")";
+        }
+
+        function effectiveMin(state) {
+            return state.boundMin != null ? state.boundMin : state.cfg.min;
+        }
+
+        function effectiveMax(state) {
+            return state.boundMax != null ? state.boundMax : state.cfg.max;
+        }
+
+        function baselineLength(state, w) {
+            var c = state.cfg;
+            if (c.shape == "circular")
+                return Math.abs(c.sweepAngle) * Math.abs(c.radius) * w;
+            return Math.hypot((c.endX - c.startX) * w, (c.endY - c.startY) * w / c.aspectRatio);
+        }
+
+        //The tics of a scale for a box of the given width (views/drawing.md, "Tics"): in the experiment's unit at
+        //min + k * ticStep, or at the nice multiples a graph axis of this length would choose; in another unit the
+        //nice multiples of that unit at the matching positions. {value, fraction, major, text}
+        function computeTics(state, w, textPx) {
+            var c = state.cfg;
+            var result = [];
+            var lo = effectiveMin(state), hi = effectiveMax(state);
+            if (!isFiniteNumber(lo) || !isFiniteNumber(hi) || lo == hi)
+                return result;
+            var dir = hi > lo ? 1 : -1;
+            var converted = isConverted(state);
+            var majors = [], decimals, step, every;
+            if (!converted && c.ticStep > 0) {
+                var n = Math.floor(Math.abs(hi - lo) / c.ticStep + 1e-9);
+                for (var k = 0; k <= n; k++) {
+                    var v = lo + dir * k * c.ticStep;
+                    majors.push({value: v, shown: v, k: k});
+                }
+                decimals = c.precision != null && c.precision >= 0 ? c.precision : decimalsFor(c.ticStep);
+                step = c.ticStep;
+                every = c.valueEvery;
+            } else {
+                var a = toDisplay(state, lo), b = toDisplay(state, hi);
+                var dLo = Math.min(a, b), dHi = Math.max(a, b);
+                var sp = linearTicStep(dHi - dLo, maxTicsFor(baselineLength(state, w), textPx));
+                var first = Math.ceil(dLo / sp.step - 1e-9) * sp.step;
+                for (var j = 0; ; j++) {
+                    var d = first + j * sp.step;
+                    if (d > dHi + sp.step * 1e-9)
+                        break;
+                    majors.push({value: fromDisplay(state, d), shown: d, k: j});
+                }
+                var factor = converted ? PhyphoxUnits.scale(c.unit.id, state.displayUnitId) : 1;
+                decimals = c.precision != null && c.precision >= 0 ? (converted ? PhyphoxUnits.precision(c.precision, factor) : c.precision) : Math.max(sp.precision, 0);
+                step = sp.step / factor;
+                every = converted ? (c.valueEvery > 0 ? 1 : 0) : c.valueEvery;
+            }
+            var span = hi - lo;
+            majors.forEach(function(m) {
+                var showValue = every > 0 && m.k % every == 0;
+                result.push({value: m.value, fraction: (m.value - lo) / span, major: true, text: showValue ? formatValue(m.shown, decimals) : null});
+            });
+            if (c.minorTics > 0 && majors.length > 0 && step > 0) {
+                var sub = dir * step / (c.minorTics + 1);
+                var base = majors[0].value;
+                var jA = (lo - base) / sub, jB = (hi - base) / sub;
+                var jFrom = Math.ceil(Math.min(jA, jB) - 1e-9), jTo = Math.floor(Math.max(jA, jB) + 1e-9);
+                for (var i = jFrom; i <= jTo; i++) {
+                    if (i % (c.minorTics + 1) == 0)
+                        continue;
+                    var mv = base + i * sub;
+                    var f = (mv - lo) / span;
+                    if (f < -1e-9 || f > 1 + 1e-9)
+                        continue;
+                    result.push({value: mv, fraction: f, major: false, text: null});
+                }
+            }
+            return result;
+        }
+
+        function prepareElement(ve) {
+            var kind = ve.geometry ? "geometry" : "scale";
+            var cfg = ve.geometry || ve.scale;
+            var state = {index: parseInt(ve.index), ve: ve, cfg: cfg, kind: kind, node: null, canvas: null, hit: null,
+                boundMin: null, boundMax: null, convertible: false, displayUnitId: null, labelRect: null, tics: [], width: 0, height: 0};
+            if (kind == "scale") {
+                state.convertible = !!(cfg.unit && cfg.unit.id != null && PhyphoxUnits.isConvertible(cfg.unit.id));
+                state.displayUnitId = cfg.unit ? cfg.unit.id : null;
+                if (state.convertible)
+                    state.displayUnitId = PhyphoxUnits.forSetting(cfg.unit.id, unitSystem);
+            }
+            elements[state.index] = state;
+            ve.dataInputFunction = function(data) {
+                if (kind != "scale")
+                    return;
+                var m = cfg.minInput != null ? lastValue(cfg.minInput) : null;
+                var M = cfg.maxInput != null ? lastValue(cfg.maxInput) : null;
+                m = isFiniteNumber(m) ? m : null;
+                M = isFiniteNumber(M) ? M : null;
+                if (m !== state.boundMin || M !== state.boundMax) {
+                    state.boundMin = m;
+                    state.boundMax = M;
+                    state.dirty = true;
+                }
+            };
+            ve.dataCompleteFunction = function() {
+                if (state.dirty) {
+                    state.dirty = false;
+                    draw(state);
+                }
+            };
+        }
+
+        //Called after the html has been placed in the document: a canvas per element, followed by the box's width
+        function attachToDOM(ve) {
+            var state = elements[parseInt(ve.index)];
+            if (!state)
+                return;
+            var node = document.getElementById("element" + state.index);
+            if (!node)
+                return;
+            node.innerHTML = "";
+            state.node = node;
+            state.canvas = document.createElement("canvas");
+            node.appendChild(state.canvas);
+            state.hit = null;
+            //the label of a convertible scale is the one click a stack passes on; a scale in a transform gets none
+            if (state.kind == "scale" && state.convertible && !node.closest(".group_transform")) {
+                state.hit = document.createElement("div");
+                state.hit.className = "scaleLabel";
+                state.hit.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    PhyphoxUnits.showDialog(state.cfg.unit.id, state.displayUnitId, function(id) { setDisplayUnit(state.index, id); });
+                });
+                node.appendChild(state.hit);
+            }
+            node.phyphoxDrawing = state;
+            if (observer)
+                observer.observe(node);
+            draw(state);
+        }
+
+        function destroyAll() {
+            if (observer)
+                observer.disconnect();
+            for (var i in elements) {
+                elements[i].node = null;
+                elements[i].canvas = null;
+                elements[i].hit = null;
+            }
+        }
+
+        //The colour of a drawing, adapted to the bright mode like every colour of the experiment
+        function color(c) {
+            return adjustableColor(c);
+        }
+
+        //Chrome needs a path for a rounded rectangle on older versions; arcTo draws the same corners everywhere
+        function roundRect(ctx, x, y, w, h, r) {
+            r = Math.min(r, w / 2, h / 2);
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+        }
+
+        //The canvas counts angles from three o'clock, the file from twelve
+        function canvasAngle(angle) {
+            return angle - Math.PI / 2;
+        }
+
+        function isFullTurn(sweep) {
+            return Math.abs(sweep) >= 2 * Math.PI - 1e-6;
+        }
+
+        function drawGeometry(state, ctx, w, h) {
+            var c = state.cfg;
+            var px = function(f) { return f * w; }, py = function(f) { return f * h; }, len = function(f) { return f * w; };
+            var doFill = c.color != null && c.shape != "line";
+            var strokeColor = c.lineColor != null ? c.lineColor : (c.shape == "line" ? c.color : null);
+            var doStroke = strokeColor != null && c.lineWidth > 0;
+            ctx.lineWidth = Math.max(len(c.lineWidth), 0);
+            ctx.lineCap = "butt";
+            var fillRule = "nonzero";
+            ctx.beginPath();
+            if (c.shape == "rectangle") {
+                var x0 = Math.min(px(c.left), px(c.right)), x1 = Math.max(px(c.left), px(c.right));
+                var y0 = Math.min(py(c.top), py(c.bottom)), y1 = Math.max(py(c.top), py(c.bottom));
+                roundRect(ctx, x0, y0, x1 - x0, y1 - y0, Math.max(len(c.cornerRadius), 0));
+            } else if (c.shape == "circle") {
+                ctx.arc(px(c.centerX), py(c.centerY), Math.max(len(c.radius), 0), 0, 2 * Math.PI);
+            } else if (c.shape == "line") {
+                ctx.moveTo(px(c.startX), py(c.startY));
+                ctx.lineTo(px(c.endX), py(c.endY));
+                doFill = false;
+            } else if (c.shape == "arc") {
+                var cx = px(c.centerX), cy = py(c.centerY);
+                var outer = Math.max(len(c.radius), 0), inner = Math.max(Math.min(len(c.innerRadius), outer), 0);
+                if (isFullTurn(c.sweepAngle)) {
+                    fillRule = "evenodd";
+                    ctx.moveTo(cx + outer, cy);
+                    ctx.arc(cx, cy, outer, 0, 2 * Math.PI);
+                    if (inner > 0) {
+                        ctx.moveTo(cx + inner, cy);
+                        ctx.arc(cx, cy, inner, 0, 2 * Math.PI, true);
+                    }
+                } else {
+                    var a0 = canvasAngle(c.startAngle), a1 = a0 + c.sweepAngle, ccw = c.sweepAngle < 0;
+                    ctx.arc(cx, cy, outer, a0, a1, ccw);
+                    if (inner > 0)
+                        ctx.arc(cx, cy, inner, a1, a0, !ccw);
+                    else
+                        ctx.lineTo(cx, cy);
+                    ctx.closePath();
+                }
+            }
+            if (doFill) {
+                ctx.fillStyle = color(c.color);
+                ctx.fill(fillRule);
+            }
+            if (doStroke) {
+                ctx.strokeStyle = color(strokeColor);
+                ctx.stroke();
+            }
+        }
+
+        //The point on the baseline at the fraction f, its outward/right-hand unit normal and the direction of travel
+        //there in radians (clockwise from the x axis)
+        function baselineAt(c, f, w, h) {
+            if (c.shape == "circular") {
+                var theta = c.startAngle + f * c.sweepAngle;
+                var nx = Math.sin(theta), ny = -Math.cos(theta), r = c.radius * w;
+                return {x: c.centerX * w + r * nx, y: c.centerY * h + r * ny, nx: nx, ny: ny, travel: theta + (c.sweepAngle < 0 ? Math.PI : 0)};
+            }
+            var sx = c.startX * w, sy = c.startY * h, dx = (c.endX - c.startX) * w, dy = (c.endY - c.startY) * h;
+            var d = Math.hypot(dx, dy);
+            return {x: sx + f * dx, y: sy + f * dy, nx: d > 0 ? -dy / d : 0, ny: d > 0 ? dx / d : 1, travel: Math.atan2(dy, dx)};
+        }
+
+        function drawCentredText(ctx, text, x, y, radians) {
+            ctx.save();
+            ctx.translate(x, y);
+            if (radians != 0)
+                ctx.rotate(radians);
+            ctx.fillText(text, 0, 0);
+            ctx.restore();
+        }
+
+        function drawScale(state, ctx, w, h, textPx, fontFamily, textColor) {
+            var c = state.cfg;
+            var col = c.color != null ? color(c.color) : textColor;
+            var lineWidth = c.lineWidth * w;
+            var lines = lineWidth > 0;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = "butt";
+            ctx.strokeStyle = col;
+            ctx.fillStyle = col;
+            ctx.font = textPx + "px " + fontFamily;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            if (lines) {
+                ctx.beginPath();
+                if (c.shape == "circular") {
+                    var cx = c.centerX * w, cy = c.centerY * h, r = c.radius * w;
+                    if (isFullTurn(c.sweepAngle))
+                        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+                    else
+                        ctx.arc(cx, cy, r, canvasAngle(c.startAngle), canvasAngle(c.startAngle) + c.sweepAngle, c.sweepAngle < 0);
+                } else {
+                    ctx.moveTo(c.startX * w, c.startY * h);
+                    ctx.lineTo(c.endX * w, c.endY * h);
+                }
+                ctx.stroke();
+            }
+            state.tics = computeTics(state, w, textPx);
+            state.tics.forEach(function(tic) {
+                var p = baselineAt(c, tic.fraction, w, h);
+                var length = (tic.major ? c.ticLength : c.minorTicLength) * w;
+                if (lines && length != 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(p.x + p.nx * length, p.y + p.ny * length);
+                    ctx.stroke();
+                }
+                if (tic.text != null) {
+                    var radians = 0;
+                    if (c.valueOrientation == "tangential")
+                        radians = p.travel;
+                    else if (c.valueOrientation == "radial")
+                        radians = Math.atan2(p.ny, p.nx);
+                    drawCentredText(ctx, tic.text, p.x + p.nx * c.valueDistance * w, p.y + p.ny * c.valueDistance * w, radians);
+                }
+            });
+            var label = labelText(state);
+            state.labelRect = null;
+            if (label != "") {
+                var lx = c.labelPositionX * w, ly = c.labelPositionY * h;
+                drawCentredText(ctx, label, lx, ly, 0);
+                var halfWidth = ctx.measureText(label).width / 2, halfHeight = textPx * 0.6, slop = textPx / 2;
+                state.labelRect = {left: lx - halfWidth - slop, top: ly - halfHeight - slop, width: 2 * (halfWidth + slop), height: 2 * (halfHeight + slop)};
+            }
+            if (state.hit) {
+                if (state.labelRect) {
+                    state.hit.style.display = "block";
+                    state.hit.style.left = state.labelRect.left + "px";
+                    state.hit.style.top = state.labelRect.top + "px";
+                    state.hit.style.width = state.labelRect.width + "px";
+                    state.hit.style.height = state.labelRect.height + "px";
+                } else
+                    state.hit.style.display = "none";
+            }
+        }
+
+        //(Re)draws the element at its current width; the box is the full width and width / aspectRatio tall
+        function draw(state) {
+            if (!state.canvas || !state.node)
+                return;
+            var w = state.node.clientWidth;
+            if (!(w > 0))
+                return;
+            var h = Math.max(Math.round(w / (state.cfg.aspectRatio > 0 ? state.cfg.aspectRatio : 1)), 1);
+            var dpr = window.devicePixelRatio || 1;
+            state.width = w;
+            state.height = h;
+            state.canvas.style.width = w + "px";
+            state.canvas.style.height = h + "px";
+            state.canvas.width = Math.round(w * dpr);
+            state.canvas.height = Math.round(h * dpr);
+            var ctx = state.canvas.getContext("2d");
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            var style = getComputedStyle(state.node);
+            if (state.kind == "geometry")
+                drawGeometry(state, ctx, w, h);
+            else
+                drawScale(state, ctx, w, h, (parseFloat(style.fontSize) || 16) * (state.cfg.size > 0 ? state.cfg.size : 1), style.fontFamily || "sans-serif", style.color || "#ffffff");
+        }
+
+        //What the unit dialog does: the values in another unit of the same quantity, the geometry stays (page-local)
+        function setDisplayUnit(index, id) {
+            var state = elements[index];
+            if (!state || state.kind != "scale" || !state.convertible || !PhyphoxUnits.sameQuantity(state.cfg.unit.id, id))
+                return;
+            state.displayUnitId = id;
+            draw(state);
+        }
+
+        //Read-only view for the test suite
+        function state(index) {
+            var s = elements[index];
+            if (!s)
+                return null;
+            var r = {kind: s.kind, width: s.width, height: s.height};
+            if (s.kind == "scale") {
+                r.convertible = s.convertible;
+                r.unitId = s.cfg.unit ? s.cfg.unit.id : null;
+                r.displayUnitId = s.displayUnitId;
+                r.label = labelText(s);
+                r.min = effectiveMin(s);
+                r.max = effectiveMax(s);
+                r.tics = s.tics.map(function(t) { return {value: t.value, fraction: t.fraction, major: t.major, text: t.text}; });
+                r.labelRect = s.labelRect;
+            }
+            return r;
+        }
+
+        return {
+            prepareElement: prepareElement,
+            attachToDOM: attachToDOM,
+            destroyAll: destroyAll,
+            setDisplayUnit: setDisplayUnit,
+            state: state
+        };
+    })();
+
     //Store settings to cookie
     function saveSetting(name, value) {
         document.cookie = name + "=" + value;
@@ -1084,6 +1549,7 @@
 
     function recreateViews() {
         PhyphoxGraph.destroyAll();
+        PhyphoxDrawing.destroyAll();
         if (gridObserver)
             gridObserver.disconnect();
         viewsNode.innerHTML = "";
@@ -1101,6 +1567,8 @@
                 PhyphoxGraph.attachToDOM(ve);
             else if (ve.hasOwnProperty("value") || ve.hasOwnProperty("edit"))
                 PhyphoxUnits.attachToDOM(ve);
+            else if (ve.hasOwnProperty("geometry") || ve.hasOwnProperty("scale"))
+                PhyphoxDrawing.attachToDOM(ve);
         });
         adjustColors();
         forceFull = true;
@@ -1323,13 +1791,16 @@
         body.style.fontSize = (100*scaleFactor)+"%";
 
         //Graph elements are entirely built here from the configuration the app provides; value and edit elements
-        //with a configuration get their data functions here (their html stays the app's)
+        //with a configuration get their data functions here (their html stays the app's); geometry and scale
+        //elements are drawn on a canvas from theirs
         views.forEach(function(view) {
             forEachElement(view.elements, function(ve) {
                 if (ve.hasOwnProperty("graph"))
                     PhyphoxGraph.prepareElement(ve);
                 else if (ve.hasOwnProperty("value") || ve.hasOwnProperty("edit"))
                     PhyphoxUnits.prepareElement(ve);
+                else if (ve.hasOwnProperty("geometry") || ve.hasOwnProperty("scale"))
+                    PhyphoxDrawing.prepareElement(ve);
             });
         });
 

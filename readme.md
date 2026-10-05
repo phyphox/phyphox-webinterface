@@ -123,6 +123,7 @@ A `transform` has exactly one child. Each leaf element carries
 | `visibilityInput` | Optional buffer name whose last value (> 0) controls the element's visibility |
 | `graph` | Optional graph configuration object (below). When present, the interface builds html, dataInputFunction and dataCompleteFunction itself and ignores the ones provided |
 | `value`, `edit` | Optional configuration of a value or edit element ("Value and edit elements" below). When present, the interface installs its own dataInputFunction and dataCompleteFunction (the provided ones are ignored) and drives the element's `html`, which keeps its shape; without it the element runs on the app-generated functions as before |
+| `geometry`, `scale` | The configuration of a drawing element ("Drawing elements" below). The interface draws the element on a canvas inside the element's `html` (an empty `<div class="geometryElement">` / `<div class="scaleElement">`) and installs its own data functions |
 
 Labels (file format 1.21): the `html` of a value, edit, toggle (`switchElement`), dropdown and
 slider element contains its `<span class="label">` only when the element has a label - without
@@ -177,6 +178,65 @@ element carries the experiment's symbol; the interface replaces it while another
 With the configuration present the interface sends a typed value itself
 (`control?cmd=set&buffer=<name>&value=<v>` with `v` converted back to the experiment's unit and divided
 by `factor`), so the `onchange` of the app's markup is dropped.
+
+### Drawing elements
+
+File format 1.21 adds two elements drawn from attributes (phyphox-docs `docs/file-format/views/drawing.md`):
+`geometry`, a static shape, and `scale`, the axis of a gauge. Both take the full width and are
+`width / aspectRatio` tall; positions are fractions of that box per axis (x from the left, y from the top),
+lengths fractions of the width, angles radians clockwise from twelve o'clock; drawing outside the box is
+clipped. All keys are always present, numbers are numbers, a colour is `"#rrggbb"` or `"#rrggbbaa"` (the
+experiment's colour as given, adapted to the bright mode by the interface) or `null` for "not set".
+
+`geometry`:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `shape` | `"rectangle"`, `"circle"`, `"line"` or `"arc"` | What is drawn |
+| `aspectRatio` | number | Width divided by height of the box |
+| `color` | colour or null | Fill of an area shape, or the colour of a line without `lineColor`; without it an area shape has no fill |
+| `lineColor` | colour or null | Outline of an area shape, or the colour of a line; without it an area shape has no outline |
+| `lineWidth` | number | Width of the outline or the line, as a fraction of the width |
+| `left`, `top`, `right`, `bottom`, `cornerRadius` | number | rectangle: its edges and the radius of its corners |
+| `centerX`, `centerY`, `radius`, `innerRadius`, `startAngle`, `sweepAngle` | number | circle: centre and radius; arc: the ring segment between `innerRadius` and `radius` from `startAngle` over `sweepAngle` (positive clockwise; a full turn is a ring, `innerRadius` 0 a pie slice) |
+| `startX`, `startY`, `endX`, `endY` | number | line: its two points; the line has square ends that stop exactly there |
+
+`scale` (the leaf's `label` is the axis label):
+
+| Key | Type | Meaning |
+|---|---|---|
+| `shape` | `"linear"` or `"circular"` | A straight baseline from `startX`/`startY` (min) to `endX`/`endY` (max), or the arc around `centerX`/`centerY` of `radius` from `startAngle` (min) over `sweepAngle` (max), clockwise for a positive sweep |
+| `aspectRatio` | number | Width divided by height of the box |
+| `min`, `max` | number | The range in the experiment's unit |
+| `minInput`, `maxInput` | string or null | The data containers bound to min and max by the `input` children; the bound ones are also listed in `dataInput` (with `updateMode` `single`), so they are polled with the other buffers. The last value replaces the attribute while it is finite; only the tics, values and conversion follow, the baseline does not move |
+| `unit` | unit | The experiment's unit, as for a value element; with a reference the values are converted (see "Units") |
+| `color` | colour or null | Baseline, tics and text; null is the page's text colour |
+| `size` | number | Text size relative to the element's font size |
+| `lineWidth` | number | Baseline and tics, as a fraction of the width; 0 draws neither |
+| `ticStep` | number | Distance between major tics in the experiment's unit, laid out from min; 0 chooses the step automatically (below) |
+| `ticLength`, `minorTicLength`, `valueDistance` | number | Signed distances from the baseline as fractions of the width: positive is outward on a circular scale, right of the direction of travel on a linear one (below a scale running left to right); 0 for `ticLength` draws no tics |
+| `minorTics` | integer | Minor tics between two major ones |
+| `valueEvery` | integer | The value at every n-th major tic counted from min; 0 shows none |
+| `precision` | integer or null | Decimals of the values; null for as many as the step needs |
+| `valueOrientation` | `"upright"`, `"tangential"` or `"radial"` | Values horizontal, along the baseline (reading from min to max) or across it (reading towards the positive side) |
+| `labelPositionX`, `labelPositionY` | number | Centre of the label text, drawn as "label (unit)" or either part alone |
+| `startX`, `startY`, `endX`, `endY` | number | linear: the positions of min and max |
+| `centerX`, `centerY`, `radius`, `startAngle`, `sweepAngle` | number | circular: the arc of the baseline |
+
+**Automatic tics.** With `ticStep` 0, and always while the scale shows a unit other than the experiment's,
+the major tics sit at the "nice" multiples a graph axis would choose (`GraphView.linearTicStep` in the
+Android app, the same table here): the step of an axis of range *r* with at most *n* tics, where *n* is
+max(2, floor(*L* / (5 · *s*))) for a baseline of *L* pixels and a text size of *s* pixels (the element's
+font size times `size`). In the experiment's unit with an explicit `ticStep` the values carry as many
+decimals as the step needs to be written exactly (10 → 0, 0.25 → 2) or `precision`; a converted scale labels
+every automatic tic, with the decimals the step needs or `precision` under the precision rule of the units
+page. Minor tics divide every step, also between min and the first major tic and after the last one.
+
+**The label click.** The label of a scale with a convertible unit is a positioned hit box
+(`.scaleLabel`) over the label text that opens the unit dialog. It is the one click a stack passes on:
+the stack and everything in it are `pointer-events: none`, the hit box alone is `auto`, so a click
+reaches it even under a transformed needle drawn later, and a click anywhere else on the stack does
+nothing. A scale inside a transform gets no hit box.
 
 ### The graph configuration
 
@@ -243,15 +303,16 @@ question is asked when nothing is zoomed, so toggling the clock display alone do
 
 The interface implements the unit conversion of phyphox-docs `docs/file-format/units.md` in the
 browser, from the same table the apps carry (`PhyphoxUnits` in `index.html`; it must stay literally in
-step with the apps): a value or edit element with a `value`/`edit` configuration and a graph axis
-with a `unitId*` show their unit as the experiment names it, or its counterpart when `unitSystem`
-says `metric` or `imperial`; a click or tap on the unit of a value or edit element, or on the axis
+step with the apps): a value or edit element with a `value`/`edit` configuration, a graph axis
+with a `unitId*` and a scale with a unit reference show their unit as the experiment names it, or its counterpart when `unitSystem`
+says `metric` or `imperial`; a click or tap on the unit of a value or edit element, on the label of a scale, or on the axis
 title text of a maximized graph (the "t (s)" below the plot for x, the rotated title left of it for
 y, the colour scale's title for z, each with a small slop; a click elsewhere outside the plot leaves
 the maximized graph), opens a dialog with the units of that quantity, grouped by system, the
 experiment's marked as its default. The choice is page-local and not stored. Everything the element shows is converted (the
 value with the precision rule, the field and its limits, the chart's data, ranges, ticks and the
-picker's read-outs, with differences and slopes carrying the scale alone), while the REST API keeps
+picker's read-outs, with differences and slopes carrying the scale alone, the values at the tics of a
+scale within its unchanged geometry), while the REST API keeps
 carrying the buffers' original values: a pick output and a typed value are converted back before
 they are sent. Text units, values with `positiveUnit`/`negativeUnit` or a non-float `format`, integer
 edit fields and a time axis showing a clock are not converted.

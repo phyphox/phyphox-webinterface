@@ -25,7 +25,7 @@ function createExperiment() {
   const sizes = {};
   const buf = (name, size) => { buffers[name] = []; sizes[name] = size; };
   ['acc_time', 'accX', 'accY', 'accZ', 'acc', 'temp', 'xd', 'yd', 'hx', 'hy', 'fmap', 'tmap', 'fftmap', 'lx', 'ly', 'neverX', 'neverY', 'nanX', 'nanY'].forEach(n => buf(n, 0));
-  ['pickedX', 'assigned', 'pickedY', 'value', 'angle', 'fade', 'distance', 'height', 'length'].forEach(n => buf(n, 1));
+  ['pickedX', 'assigned', 'pickedY', 'value', 'angle', 'fade', 'distance', 'height', 'length', 'percent', 'lower', 'upper'].forEach(n => buf(n, 1));
 
   const push = (name, v) => {
     const b = buffers[name];
@@ -52,6 +52,10 @@ function createExperiment() {
   push('distance', 1.5);
   push('height', 2);
   push('length', 0.5);
+  // the drawing elements: the needle's value and the bound range of a scale (the Drawing view)
+  push('percent', 42);
+  push('lower', -10);
+  push('upper', 250);
 
   function tick() {
     const now = Date.now();
@@ -203,6 +207,26 @@ function imageElement(index, src) {
     html: `<div class="imageElement" id="element${index}"><img style="width: 100%" class="lightFilter_none darkFilter_none" src="res?src=${encodeURIComponent(src)}"></div>`,
     dataCompleteFunction: 'function() {}'};
 }
+// The drawing elements (file format 1.21, readme.md "Drawing elements"): every key present, the defaults of the file format
+function geometryElement(index, cfg) {
+  return {label: '', index: String(index), updateMode: 'none', labelSize: '42',
+    html: `<div class="geometryElement" id="element${index}"></div>`, dataCompleteFunction: 'function() {}',
+    geometry: Object.assign({shape: 'rectangle', aspectRatio: 1, color: null, lineColor: null, lineWidth: 0.01, left: 0, top: 0, right: 1, bottom: 1, cornerRadius: 0,
+      centerX: 0.5, centerY: 0.5, radius: 0.5, innerRadius: 0, startAngle: 0, sweepAngle: 6.2832, startX: 0, startY: 0.5, endX: 1, endY: 0.5}, cfg)};
+}
+function scaleElement(label, index, cfg) {
+  const scale = Object.assign({shape: 'linear', aspectRatio: 1, min: 0, max: 1, minInput: null, maxInput: null, unit: {id: null, text: ''}, color: null, size: 1,
+    lineWidth: 0.005, ticStep: 0, ticLength: 0.03, minorTics: 0, minorTicLength: 0.015, valueEvery: 1, valueDistance: 0.08, precision: null, valueOrientation: 'upright',
+    labelPositionX: 0.5, labelPositionY: 0.5, startX: 0.1, startY: 0.5, endX: 0.9, endY: 0.5, centerX: 0.5, centerY: 0.5, radius: 0.4, startAngle: -2.3562, sweepAngle: 4.7124}, cfg);
+  const inputs = [scale.minInput, scale.maxInput].filter(n => n != null);
+  const e = {label, index: String(index), updateMode: inputs.length ? 'single' : 'none', labelSize: '42',
+    html: `<div class="scaleElement" id="element${index}"></div>`, dataCompleteFunction: 'function() {}', scale};
+  if (inputs.length) {
+    e.dataInput = inputs;
+    e.dataInputFunction = 'function(data) {}';
+  }
+  return e;
+}
 // A view group (file format 1.21): type, its children and the type's attributes; no index, no html
 const group = (type, elements, over) => Object.assign({type, elements}, over || {});
 const identity = {min: 0, max: 1, mapMin: 0, mapMax: 1, clamp: false};
@@ -308,6 +332,53 @@ const views = [
       graph('Overlay', 26, 'full', ['hy', 'hx'], base({labelX: 'bin', labelY: 'count', plotLeft: 0.1, plotTop: 0.1, plotRight: 0.9, plotBottom: 0.9, datasets: [line('hx', 'hy', '#ff7e2280')]}))
     ]),
     valueElement('Alpha value', 27, 'value', '', 2, 'ff7e2280')
+  ]},
+  // The drawing elements (file format 1.21); mirrors the "Drawing" view of fixtures/webgraphs.phyphox, which in turn
+  // follows phyphox-docs corpus/generated/view-drawing.phyphox plus a convertible scale under a needle
+  {name: 'Drawing', elements: [
+    group('stack', [
+      geometryElement(51, {shape: 'circle', radius: 0.48, color: '#202020', lineColor: '#ff7e22', lineWidth: 0.01}),
+      geometryElement(52, {shape: 'arc', radius: 0.45, innerRadius: 0.4, startAngle: 1.57, sweepAngle: 0.79, color: '#fe005d80'}),
+      scaleElement('Load', 53, {shape: 'circular', min: 0, max: 100, ticStep: 10, minorTics: 4, radius: 0.42, startAngle: -2.3562, sweepAngle: 4.7124, lineWidth: 0.005,
+        ticLength: -0.04, minorTicLength: -0.02, valueEvery: 2, valueDistance: -0.11, precision: 0, size: 0.8, color: '#ffffff', valueOrientation: 'radial',
+        unit: {id: null, text: '%'}, labelPositionX: 0.5, labelPositionY: 0.72}),
+      group('transform', [geometryElement(54, {shape: 'line', startX: 0.5, startY: 0.5, endX: 0.5, endY: 0.12, lineColor: '#ff7e22', lineWidth: 0.015})],
+        {originX: 0.5, originY: 0.5, transformInputs: [Object.assign({as: 'rotate', buffer: 'percent', value: null}, identity, {min: 0, max: 100, mapMin: -2.3562, mapMax: 2.3562, clamp: true})]}),
+      geometryElement(55, {shape: 'circle', radius: 0.04, color: '#ff7e22'}),
+      valueElement('', 56, 'percent', '%', 2, null, false, 'center')
+    ]),
+    group('vertical', [
+      geometryElement(57, {shape: 'rectangle', aspectRatio: 4, left: 0.05, top: 0.2, right: 0.95, bottom: 0.6, cornerRadius: 0.05, color: '#303030', lineColor: '#ff7e22', lineWidth: 0.004}),
+      scaleElement('Temperature', 58, {shape: 'linear', aspectRatio: 4, min: -20, max: 60, ticStep: 10, minorTics: 1, unit: ref('degree_celsius'),
+        startX: 0.05, startY: 0.25, endX: 0.95, endY: 0.25, ticLength: 0.03, minorTicLength: 0.015, valueDistance: 0.08, labelPositionX: 0.5, labelPositionY: 0.88})
+    ]),
+    group('horizontal', [
+      geometryElement(59, {shape: 'line', startX: 0.1, startY: 0.9, endX: 0.9, endY: 0.1, color: '#39a2ff', lineWidth: 0.02}), // the app's "blue"
+      Object.assign(scaleElement('', 60, {shape: 'linear', min: 0, max: 1, startX: 0.5, startY: 0.9, endX: 0.5, endY: 0.1, ticStep: 0.25, unit: {id: null, text: 'm/s²'}, valueOrientation: 'tangential'}), {weight: 2})
+    ]),
+    group('grid', [
+      geometryElement(61, {}),
+      scaleElement('Heading', 62, {shape: 'circular', min: 0, max: 360, ticStep: 90, lineWidth: 0, ticLength: 0, valueEvery: 0, sweepAngle: -6.2832}),
+      scaleElement('Range', 63, {shape: 'circular', min: 0, max: 100, unit: ref('meter'), valueOrientation: 'tangential', minInput: 'lower', maxInput: 'upper'})
+    ], {maxWidth: 20, maxWidthUnit: 'text', fillLastRow: false}),
+    group('stack', [
+      geometryElement(64, {shape: 'rectangle', aspectRatio: 6, cornerRadius: 0.08, color: '#303030'}),
+      group('transform', [geometryElement(65, {shape: 'rectangle', aspectRatio: 6, cornerRadius: 0.08, color: '#2bfb4c'})],
+        {originX: 0, originY: 0.5, transformInputs: [Object.assign({as: 'scaleX', buffer: 'percent', value: null}, identity, {min: 0, max: 100, clamp: true})]}),
+      group('transform', [scaleElement('', 66, {shape: 'circular', aspectRatio: 6, min: 0, max: 100, radius: 0.05})],
+        {originX: 0.5, originY: 0.5, transformInputs: [Object.assign({as: 'rotate', buffer: 'percent', value: null}, identity, {min: 0, max: 360, mapMin: 0, mapMax: 6.2832})]}),
+      scaleElement('', 67, {aspectRatio: 6, min: 0, max: 100, ticStep: 25, startX: 0, startY: 0.5, endX: 1, endY: 0.5, ticLength: 0.02, valueDistance: -0.05, unit: {id: null, text: '%'}})
+    ]),
+    // a convertible scale whose label lies under a transformed needle and a hub: the one click a stack passes on
+    group('stack', [
+      geometryElement(68, {shape: 'circle', radius: 0.48, color: '#202020'}),
+      scaleElement('Distance', 69, {shape: 'circular', min: 0, max: 10, unit: ref('meter'), labelPositionX: 0.5, labelPositionY: 0.5}),
+      group('transform', [geometryElement(70, {shape: 'line', startX: 0.5, startY: 0.5, endX: 0.5, endY: 0.1, lineColor: '#ff7e22', lineWidth: 0.02})],
+        {originX: 0.5, originY: 0.5, transformInputs: [Object.assign({as: 'rotate', buffer: 'percent', value: null}, identity, {min: 0, max: 100, mapMin: 0, mapMax: 3.14})]}),
+      group('transform', [scaleElement('Time', 71, {shape: 'linear', min: 0, max: 1, unit: ref('second'), labelPositionX: 0.5, labelPositionY: 0.9})],
+        {originX: 0.5, originY: 0.5, transformInputs: [Object.assign({as: 'opacity', buffer: 'percent', value: null}, identity, {min: 0, max: 100})]}),
+      geometryElement(72, {shape: 'circle', radius: 0.04, color: '#ff7e22'})
+    ])
   ]}
 ];
 
@@ -327,6 +398,8 @@ function elementsJson(elements) {
     if (e.graph) s += ',"graph":' + JSON.stringify(e.graph);
     if (e.value) s += ',"value":' + JSON.stringify(e.value);
     if (e.edit) s += ',"edit":' + JSON.stringify(e.edit);
+    if (e.geometry) s += ',"geometry":' + JSON.stringify(e.geometry);
+    if (e.scale) s += ',"scale":' + JSON.stringify(e.scale);
     s += '}';
   });
   return s;
